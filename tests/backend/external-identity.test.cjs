@@ -45,8 +45,9 @@ test('authorization URL and token POST use exact redirect, state, nonce and PKCE
   assert.equal(p.get('scope'), 'openid email');
   assert.equal(p.get('code_challenge_method'), 'S256');
   assert.equal(p.get('code_challenge'), sha256Base64Url(start.stateRecord.arguments.oauthCodeVerifier));
-  assert.equal(start.stateRecord.method, 'googleOAuthCallback_');
-  assert.match(p.get('redirect_uri'), /^https:\/\/script\.google\.com\/macros\/d\/[^/]+\/usercallback$/);
+  assert.equal(h.state.stateTokens.size, 0);
+  assert.match(start.stateToken, /^callback1_[A-Za-z0-9_-]{43}$/);
+  assert.match(p.get('redirect_uri'), /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/);
   for (const name of ['access_token', 'id_token', 'client_secret', 'session_token']) assert.equal(p.has(name), false);
   expectError(h.invokeWithToken('getDashboard', start.sessionToken), 'UNAUTHENTICATED');
   const result = h.finishOAuth(start);
@@ -110,33 +111,63 @@ test('callback and poll are one-time and incorrect poll proof cannot redeem a fl
   assert.match(h.invokeRaw('googleOAuthCallback_', result.event).getContent(), /ไม่สำเร็จ/);
   assert.equal(h.state.fetches.length, count);
 });
-test('tampered callback state, nonce, PKCE, duplicate parameters and expired flow never create a session', () => {
-  for (const field of ['oauthCallbackKey', 'oauthNonce', 'oauthCodeVerifier']) {
-    const h = harness();
-    const start = h.startOAuth();
-    const result = h.finishOAuth(start, { eventOverrides: { parameter: { [field]: 'tampered' } } });
-    assert.equal(result.pollResponse.data.status, 'PENDING');
-    expectError(h.invokeWithToken('getDashboard', start.sessionToken), 'UNAUTHENTICATED');
+test('forged, invalid, duplicate and expired state callbacks never activate sessions', () => {
+  for (const overrides of [
+    {parameter:{state:'tampered'}}, {parameter:{state:'callback1_'+'a'.repeat(43)}},
+    {parameters:{state:['one','two']}}, {parameters:{code:['one','two']}},
+    {parameter:{error:'access_denied'}}
+  ]) {
+    const h=harness(), start=h.startOAuth();
+    const result=h.finishOAuth(start,{eventOverrides:overrides,skipPoll:true});
+    assert.match(result.callbackOutput.getContent(),/ไม่สำเร็จ/);
+    expectError(h.invokeWithToken('getDashboard',start.sessionToken),'UNAUTHENTICATED');
   }
-  const h = harness();
-  const start = h.startOAuth();
-  h.finishOAuth(start, { eventOverrides: { parameters: { code: ['one', 'two'] } }, skipPoll: true });
-  expectError(h.invokeWithToken('getDashboard', start.sessionToken), 'UNAUTHENTICATED');
-  h.advanceTime(601);
-  expectError(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken), 'UNAUTHENTICATED');
-  assert.match(h.finishOAuth(start, { skipPoll: true }).callbackOutput.getContent(), /ไม่สำเร็จ/);
+  const h=harness(), start=h.startOAuth(); h.advanceTime(601);
+  assert.match(h.finishOAuth(start,{skipPoll:true}).callbackOutput.getContent(),/ไม่สำเร็จ/);
+  expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken),'UNAUTHENTICATED');
 });
-test('attacker-initiated authorization cannot be completed by another visitor context', () => {
-  const h = harness();
+test('attacker-started/victim-redeemed flow does not yield a session through polling', () => {
+  const h=harness(); h.setVisitorKey('attacker');
+  const start=h.startOAuth();
+  // Callback uses a DIFFERENT visitor context and may verify a victim identity.
+  const result=h.finishOAuth(start,{visitorKey:'victim',skipPoll:true});
+  assert.ok(result.handoffCode);
   h.setVisitorKey('attacker');
-  const start = h.startOAuth();
-  const result = h.finishOAuth(start, { visitorKey: 'victim', skipPoll: true });
-  assert.match(result.callbackOutput.getContent(), /ไม่สำเร็จ/);
-  h.setVisitorKey('attacker');
-  assert.equal(expectOk(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken)).status, 'PENDING');
-  expectError(h.invokeWithToken('getDashboard', start.sessionToken), 'UNAUTHENTICATED');
-  h.setVisitorKey('');
-  expectError(h.startOAuth().response, 'UNAUTHENTICATED');
+  const poll=expectOk(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken));
+  assert.equal(poll.status,'AWAITING_CONFIRMATION');
+  assert.equal(JSON.stringify(poll).includes(result.handoffCode),false);
+  expectError(h.invokeWithToken('getDashboard',start.sessionToken),'UNAUTHENTICATED');
+  expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,
+    'confirm1_'+'x'.repeat(43),start.sessionToken),'UNAUTHENTICATED');
+});
+test('confirmation requires both callback code and original browser proofs and is one-time', () => {
+  const h=harness(), start=h.startOAuth();
+  const result=h.finishOAuth(start,{visitorKey:'different-callback-context',skipPoll:true});
+  h.setVisitorKey(start.visitorKey);
+  for(const [poll,session] of [['poll1_'+'x'.repeat(43),start.sessionToken],
+    [start.pollToken,'session1_'+'x'.repeat(43)]]) {
+    expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,poll,result.handoffCode,session),'UNAUTHENTICATED');
+  }
+  expectOk(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,result.handoffCode,start.sessionToken));
+  expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,result.handoffCode,start.sessionToken),'UNAUTHENTICATED');
+});
+test('wrong stored PKCE verifier is rejected by the token endpoint', () => {
+  const h=harness(), start=h.startOAuth();
+  const key=h.context.oauthCallbackCacheKey_(start.stateToken);
+  const record=JSON.parse(h.cache.get(key));
+  record.codeVerifier='pkce1_'+'x'.repeat(43);
+  h.cache.put(key,JSON.stringify(record),600);
+  expectError(h.finishOAuth(start).pollResponse,'UNAUTHENTICATED');
+});
+test('confirmation expires and current Users status is rechecked before session activation', () => {
+  for(const action of ['expire','inactive']) {
+    const h=harness(), start=h.startOAuth(), result=h.finishOAuth(start,{skipPoll:true});
+    if(action==='expire')h.advanceTime(601);
+    else h.replaceCell('Users','user_id','USR-000001','status','INACTIVE');
+    expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,result.handoffCode,start.sessionToken),
+      action==='expire'?'UNAUTHENTICATED':'USER_DISABLED');
+    expectError(h.invokeWithToken('getDashboard',start.sessionToken),'UNAUTHENTICATED');
+  }
 });
 test('token endpoint errors and consent denial do not activate the session', () => {
   for (const options of [{ tokenStatus: 400 }, { tokenBody: 'not-json' }, { tokenBody: {} }, { tokenFetchError: new Error('network') }, { oauthError: 'access_denied' }]) {

@@ -82,6 +82,12 @@
           <i class="bi bi-google me-2" aria-hidden="true"></i>
           <span data-auth-button-label>ลงชื่อเข้าใช้ด้วย Google</span>
         </button>
+        <div id="oauth-handoff-panel" hidden>
+          <p>คัดลอกรหัสจากหน้าต่าง Google กลับมาวางที่นี่ ห้ามรับหรือส่งรหัสให้ผู้อื่น</p>
+          <label for="oauth-handoff-input">รหัสยืนยันการลงชื่อเข้าใช้</label>
+          <input id="oauth-handoff-input" class="form-control" type="password" autocomplete="off" spellcheck="false" maxlength="52">
+          <button id="oauth-handoff-submit" type="button" class="btn btn-primary mt-2">ยืนยันการลงชื่อเข้าใช้</button>
+        </div>
         <button class="btn btn-primary px-4" type="button" data-action="retry-bootstrap">
           <i class="bi bi-arrow-clockwise me-2" aria-hidden="true"></i>ลองอีกครั้ง
         </button>

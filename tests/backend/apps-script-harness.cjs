@@ -76,6 +76,7 @@ const SOURCE_FILES = [
   'OperationService.gs',
   'IdentityService.gs',
   'OAuthService.gs',
+  'Code.gs',
   'Auth.gs',
   'CategoryService.gs',
   'EquipmentService.gs',
@@ -440,6 +441,7 @@ function makeUtilities(state) {
       state.uuidCounter += 1;
       return `00000000-0000-4000-8000-${String(state.uuidCounter).padStart(12, '0')}`;
     },
+    computeHmacSha256Signature(value, key) { return Array.from(crypto.createHmac('sha256', key).update(value).digest()); },
     computeDigest(algorithm, value) {
       if (algorithm !== 'SHA_256') throw new Error(`Unsupported digest: ${algorithm}`);
       const bytes = typeof value === 'string' ? Buffer.from(value, 'utf8') : Buffer.from(value);
@@ -533,6 +535,7 @@ function createAppsScriptHarness(options = {}) {
     AUTO_PROVISION_USERS: 'false',
     GOOGLE_OAUTH_CLIENT_ID: TEST_GOOGLE_OAUTH_CLIENT_ID,
     GOOGLE_OAUTH_CLIENT_SECRET: TEST_GOOGLE_OAUTH_CLIENT_SECRET,
+    GOOGLE_OAUTH_REDIRECT_URI: state.webAppUrl,
     WEB_APP_URL: state.webAppUrl,
     ...(options.properties || {})
   });
@@ -723,7 +726,7 @@ function createAppsScriptHarness(options = {}) {
       expiresAt: data.expiresAt,
       authorizationUrl,
       stateToken,
-      stateRecord: state.stateTokens.get(stateToken) || null
+      stateRecord: { arguments: { oauthCodeVerifier: context.readOAuthCallbackRecord_(cache, context.oauthCallbackCacheKey_(stateToken)).codeVerifier } }
     };
   }
 
@@ -731,7 +734,7 @@ function createAppsScriptHarness(options = {}) {
     const stateArguments = start && start.stateRecord
       ? { ...start.stateRecord.arguments }
       : {};
-    const parameter = { ...stateArguments, ...values, ...(eventOverrides.parameter || {}) };
+    const parameter = { state: start.stateToken, ...values, ...(eventOverrides.parameter || {}) };
     const parameters = Object.fromEntries(Object.entries(parameter).map(([name, value]) =>
       [name, [String(value)]])
     );
@@ -792,17 +795,18 @@ function createAppsScriptHarness(options = {}) {
       callbackValues,
       finishOptions.eventOverrides || {}
     );
-    const callbackOutput = invokeRaw('googleOAuthCallback_', event);
+    const callbackOutput = invokeRaw('doGet', event);
+    const handoffCode = callbackOutput.getContent().match(/confirm1_[A-Za-z0-9_-]{43}/)?.[0] || '';
     const pollResponse = finishOptions.skipPoll
       ? null
       : invokeRaw('completeOAuthSignIn',
         finishOptions.flowId || start.flowId,
-        finishOptions.pollToken || start.pollToken);
+        finishOptions.pollToken || start.pollToken, handoffCode, start.sessionToken);
     if (pollResponse && pollResponse.ok === true &&
       pollResponse.data && pollResponse.data.status === 'COMPLETE') {
       state.sessionToken = start.sessionToken;
     }
-    return { callbackOutput, pollResponse, event, code };
+    return { callbackOutput, pollResponse, event, code, handoffCode };
   }
 
   function signInAs(email, claims = {}, tokenOptions = {}, authOptions = {}) {

@@ -38,6 +38,12 @@ async function signInWithServerOAuth(page) {
   await expect(button).toBeVisible();
   await expect(button).toBeEnabled();
   await button.click();
+  await confirmOAuth(page);
+}
+async function confirmOAuth(page) {
+  await expect(page.locator('#oauth-handoff-panel')).toBeVisible();
+  await page.locator('#oauth-handoff-input').fill('confirm1_' + 'c'.repeat(43));
+  await page.locator('#oauth-handoff-submit').click();
 }
 
 async function openAuthenticated(page, url, route) {
@@ -73,6 +79,7 @@ test('bootstrap fails closed and keeps the admin route role-gated', async ({ pag
   await page.waitForTimeout(150);
   expect(await bootstrapCallCount()).toBe(1);
   await page.locator('#google-signin-button').click();
+  await confirmOAuth(page);
   await expect.poll(bootstrapCallCount).toBe(2);
 
   expect(pageErrors).toEqual([]);
@@ -105,7 +112,6 @@ test('server-side OAuth uses a protected code-flow popup and an opaque applicati
   expect(observed.oauth).toMatchObject({
     popupOpenCount: 1,
     beginCount: 1,
-    pollCount: 2,
     completedCount: 1,
   });
   expect(observed.hasGoogleAccountsApi).toBe(false);
@@ -117,7 +123,7 @@ test('server-side OAuth uses a protected code-flow popup and an opaque applicati
   );
   expect(authorizationUrl.searchParams.get('response_type')).toBe('code');
   expect(authorizationUrl.searchParams.get('redirect_uri')).toBe(
-    'https://script.google.com/macros/d/test-script-id/usercallback',
+    'https://script.google.com/macros/s/test-pilot/exec',
   );
   expect(authorizationUrl.searchParams.get('scope').split(' ').sort()).toEqual(['email', 'openid']);
   expect(authorizationUrl.searchParams.get('state')).toBeTruthy();
@@ -137,7 +143,8 @@ test('server-side OAuth uses a protected code-flow popup and an opaque applicati
     pollTokenHash: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
     sessionTokenHash: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
   });
-  expect(polls).toHaveLength(2);
+  expect(polls.length).toBeGreaterThanOrEqual(3);
+  expect(polls.at(-1).args[2]).toBe('confirm1_' + 'c'.repeat(43));
   expect(polls.every((call) => call.sessionToken === '')).toBe(true);
   expect(polls.every((call) => /^flow1_[A-Za-z0-9_-]{43}$/.test(call.args[0]))).toBe(true);
   expect(polls.every((call) => /^poll1_[A-Za-z0-9_-]{43}$/.test(call.args[1]))).toBe(true);
@@ -162,10 +169,24 @@ test('server-side OAuth uses a protected code-flow popup and an opaque applicati
   expect(pageErrors).toEqual([]);
 });
 
+test('polling without callback confirmation never opens the protected shell', async ({ page }) => {
+  await page.goto('/?view=dashboard&role=admin');
+  await page.locator('#google-signin-button').click();
+  await expect(page.locator('#oauth-handoff-panel')).toBeVisible();
+  await page.waitForTimeout(1600);
+  await expect(page.locator('#app-shell')).toBeHidden();
+  expect(await page.evaluate(() => window.__CRS_TEST__.calls.some(c => c.method === 'getAppBootstrap'))).toBe(false);
+  await page.locator('#oauth-handoff-input').fill('wrong');
+  await page.locator('#oauth-handoff-submit').click();
+  await expect(page.locator('#app-shell')).toBeHidden();
+  await confirmOAuth(page);
+  await waitForApplication(page, 'dashboard');
+});
+
 test('a blocked OAuth popup fails closed before creating a server authorization flow', async ({ page }) => {
   const pageErrors = collectPageErrors(page);
   await page.goto('/?view=dashboard&role=admin&oauth=blocked');
-  await signInWithServerOAuth(page);
+  await page.locator('#google-signin-button').click();
 
   await expect(page.locator('#access-state')).toBeVisible();
   await expect(page.locator('#app-shell')).toBeHidden();
@@ -190,6 +211,7 @@ test('an expired application session requires a fresh OAuth flow before restorin
   await expect(page.locator('#access-state')).toBeVisible();
   await expect(page.locator('#app-shell')).toBeHidden();
   await page.locator('#google-signin-button').click();
+  await confirmOAuth(page);
   await waitForApplication(page, 'dashboard');
 
   const observed = await page.evaluate(() => ({

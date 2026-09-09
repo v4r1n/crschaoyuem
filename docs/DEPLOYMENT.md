@@ -197,12 +197,12 @@ Schema v3 ยังคงใช้ verified email เป็น authorization key
 
 1. เลือก Google Cloud project ที่องค์กรควบคุม เปิด Google Auth Platform ตั้ง Branding และ Audience เป็น **External**; หากยัง Testing ให้เพิ่มบัญชี YRU และ Gmail ที่จะทดสอบใน Test users
 2. เปิด **Clients > Create client > Web application** ไม่ใช้ Desktop/Android/iOS
-3. ใน **Authorized redirect URIs** เพิ่ม URL นี้ โดยแทน SCRIPT_ID ด้วย Script ID จาก Apps Script Project Settings (ไม่ใช่ deployment ID):
+3. ใน **Authorized redirect URIs** เพิ่ม URL นี้ โดยแทน PILOT_DEPLOYMENT_ID ด้วย deployment ID ของ Pilot:
 
-   `https://script.google.com/macros/d/{SCRIPT_ID}/usercallback`
+   `https://script.google.com/macros/s/{PILOT_DEPLOYMENT_ID}/exec`
 
 4. ไม่ต้องเพิ่ม Authorized JavaScript origins สำหรับ flow นี้ ไม่ใช้ wildcard หรือ host ของ userHtmlFrame
-5. คัดลอก Client ID ที่ลงท้าย `.apps.googleusercontent.com` ลง `GOOGLE_OAUTH_CLIENT_ID` และ Client secret ลง `GOOGLE_OAUTH_CLIENT_SECRET` ใน Script Properties เท่านั้น Callback URL ไม่ใช่ Client ID ไม่ต้องสร้าง property สำหรับ redirect เพราะ server สร้างจาก Script ID
+5. คัดลอก Client ID ที่ลงท้าย `.apps.googleusercontent.com` ลง `GOOGLE_OAUTH_CLIENT_ID` และ Client secret ลง `GOOGLE_OAUTH_CLIENT_SECRET` ใน Script Properties เท่านั้น Callback URL ไม่ใช่ Client ID ตั้ง property GOOGLE_OAUTH_REDIRECT_URI เป็น exact Pilot /exec URL เดียวกับ Authorized redirect URIs
 6. บันทึก properties; คง `ALLOWED_DOMAINS=yru.ac.th,gmail.com` และ `AUTO_PROVISION_USERS=false` ก่อนเปิด pilot หาก secret เคยปรากฏในภาพ/แชต ให้สร้างใหม่ อัปเดต property และยกเลิก secret เก่า
 7. Visitor ขอเฉพาะ `openid email`; Drive/Sheets authorization เป็นของ deployer แยกต่างหาก ห้ามเพิ่ม direct permission ให้ visitor เพื่อแก้ OAuth error
 
@@ -291,16 +291,16 @@ URL `/dev` จาก **Test deployments** เปิดได้เฉพาะ�
 
 คง production version เดิมไว้ สร้าง versioned pilot deployment ของโค้ดใหม่แบบ `USER_DEPLOYING` + `ANYONE` แล้วทดสอบผ่าน URL `/exec` ไม่ใช่ `/dev` ให้ YRU Admin เดิมลงชื่อเข้าใช้และเพิ่ม Gmail test account เป็น Users row ที่ `ACTIVE` ก่อนทดสอบบัญชีนั้น
 
-Browser สร้าง poll/session secrets ด้วย Web Crypto เก็บใน memory เท่านั้น และส่ง hashes ไปเริ่ม flow Server ใช้ Apps Script StateTokenBuilder, nonce, PKCE S256 และ callback แบบ one-time แลก code ผ่าน POST แล้วตรวจ RS256/JWKS, issuer, audience/azp, expiry/iat/nbf, nonce และ verified email ก่อนตรวจ Users row Callback ไม่ส่ง ID/access/session token ใน URL; browser poll ผลและใช้ opaque session ใน RPC body
+Browser สร้าง poll/session secrets ด้วย Web Crypto เก็บใน memory เท่านั้น และส่ง hashes ไปเริ่ม flow Server ใช้ opaque one-time server-side state, nonce, PKCE S256 และ callback แบบ one-time แลก code ผ่าน POST แล้วตรวจ RS256/JWKS, issuer, audience/azp, expiry/iat/nbf, nonce และ verified email ก่อนตรวจ Users row Callback ไม่ส่ง ID/access/session token ใน URL; browser poll ผลและใช้ opaque session ใน RPC body
 
 Session ใช้ shared ScriptCache ที่แยก record ด้วย hash ของ secret ไม่ใช้ deployer UserProperties/UserCache ไม่เก็บ role ไว้เป็นสิทธิ์ถาวร ทุก RPC อ่านสิทธิ์จาก Users ใหม่ Cache ถูกล้าง/evict หรือ session หมดอายุจะต้อง sign in ใหม่
 
-**Release gate:** ระบบใช้ hash ของ `Session.getTemporaryActiveUserKey()` เป็น channel binding เท่านั้น ไม่ใช่ email/visitor identity ต้องพิสูจน์ในระบบจริงว่าค่าคงที่ระหว่าง begin RPC, callback และ business RPC สำหรับคนเดียวกัน และต่างกันระหว่างผู้ใช้ YRU/Gmail คนละบัญชี หาก key หาย/ต่างระหว่าง context/shared ข้ามบัญชี ให้หยุด rollout ไม่ปิด binding และไม่ fallback ไปใช้ ActiveUser/EffectiveUser ต้องแก้สถาปัตยกรรมก่อน production
+**Release gate:** ระบบใช้ hash ของ `Session.getTemporaryActiveUserKey()` เป็น channel binding เท่านั้น ไม่ใช่ email/visitor identity ต้องพิสูจน์ในระบบจริงว่าค่าคงที่ระหว่าง begin/complete และ business RPC เท่านั้น ไม่ตรวจ key ใน callback สำหรับคนเดียวกัน และต่างกันระหว่างผู้ใช้ YRU/Gmail คนละบัญชี หาก key หาย/ต่างระหว่าง context/shared ข้ามบัญชี ให้หยุด rollout ไม่ปิด binding และไม่ fallback ไปใช้ ActiveUser/EffectiveUser ต้องแก้สถาปัตยกรรมก่อน production
 
 ทดสอบ browser profiles แยกกันทั้ง YRU/Gmail: sign in, sign out, refresh, session expiry, popup ถูกบล็อก/ปิด, consent denied, user ไม่มี row/Inactive และ User เรียก Admin RPC ต้องถูกปฏิเสธ ลองนำ authorization URL ของคน A ไปเปิดใน profile B ต้องไม่ให้ A รับ session ของ B ตรวจ callback ซ้ำและ state ผิดต้องถูกปฏิเสธด้วย
 
 หากไม่ผ่าน ให้ตรวจ:
-1. `redirect_uri_mismatch`: exact redirect URI ต้องใช้ Script ID และลงท้าย `/usercallback`
+1. `redirect_uri_mismatch`: exact redirect URI ต้องใช้ Pilot deployment ID และลงท้าย `/exec`
 2. `invalid_client`: Client ID/secret ต้องมาจาก Web client เดียวกัน และ secret ยังใช้งานได้
 3. `access_denied`: ตรวจ External audience, Test users และ Workspace third-party app policy
 4. `UNAUTHENTICATED`: ตรวจ callback/channel binding, อายุ flow/session และ server config ห้ามลด validation
@@ -429,7 +429,7 @@ Google เปลี่ยน quota ได้โดยไม่แจ้งล่
 - [Web app manifest access and execute-as values](https://developers.google.com/apps-script/manifest/web-app-api-executable)
 - [Session and Active User identity](https://developers.google.com/apps-script/reference/base/session)
 - [Google OAuth web-server flow](https://developers.google.com/identity/protocols/oauth2/web-server)
-- [Apps Script StateTokenBuilder](https://developers.google.com/apps-script/reference/script/state-token-builder)
+- [opaque one-time server-side state](https://developers.google.com/apps-script/reference/script/state-token-builder)
 - [Verify a Google ID token on the backend](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token)
 - [Google OpenID Connect claims](https://developers.google.com/identity/openid-connect/openid-connect)
 - [Apps Script HTML Service iframe restrictions](https://developers.google.com/apps-script/guides/html/restrictions)
@@ -440,3 +440,13 @@ Google เปลี่ยน quota ได้โดยไม่แจ้งล่
 - [Apps Script OAuth scopes](https://developers.google.com/apps-script/concepts/scopes)
 - [Apps Script logging and execution errors](https://developers.google.com/apps-script/guides/logging)
 - [Current Apps Script quotas and limits](https://developers.google.com/apps-script/guides/services/quotas)
+
+## Pilot callback confirmation update
+
+Visitor OAuth returns to the exact Pilot `/exec` URL configured in `GOOGLE_OAUTH_REDIRECT_URI` (Script Properties) and the OAuth Web application's Authorized redirect URIs. Do not use `/usercallback`, StateTokenBuilder, wildcard origins, or the production URL. `doGet` routes any code/error/state request to a private callback implementation; malformed/duplicate/replayed/expired state fails closed.
+
+Callback verifies Google identity but only stores a pending candidate, NOT an active session. It displays a one-time high-entropy confirmation code in minimal HTML without external assets. The user copies it to the original CRS tab. Confirmation requires that code plus the browser-held poll AND session proofs; polling alone never activates a session or returns the confirmation code. State and confirmation are bound to one flow and expire. Users/ACTIVE/Role are checked again at activation and on every business RPC. Copying the code to an attacker would authorize that attacker's flow: the UI explicitly warns never to share codes or complete login links sent by someone else.
+
+The callback does NOT read or compare `getTemporaryActiveUserKey()`. Its context may differ from the original RPC context. The existing temporary-key check remains only between begin/complete/business RPCs as additional defense; it is not relied on to stop attacker-started/victim-redeemed callbacks. No Google/session token appears in URLs. Raw callback state is hashed in cache; nonce/PKCE verifier are transient server-only cache data. Random server values use a domain-separated HMAC-SHA256 PRF keyed by the confidential OAuth client secret with UUID/time uniqueness input; protect/rotate that secret and never log it.
+
+Deployment procedure: pass all tests, back up HEAD, upload, create an immutable version, download that version and compare all source files, then update ONLY the existing Pilot deployment. Production promotion requires real YRU/Gmail login, confirmation, session isolation, and authorization acceptance. A configuration change does not prove successful login.

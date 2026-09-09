@@ -479,10 +479,10 @@
     }
     state.oauth.beginCount += 1;
     var flowId = 'flow1_' + fixedOpaqueSuffix('test-flow-', state.oauth.beginCount);
-    var stateToken = 'apps-script-state-' + fixedOpaqueSuffix('state-', state.oauth.beginCount);
+    var stateToken = 'callback1_' + fixedOpaqueSuffix('state-', state.oauth.beginCount);
     var nonce = 'nonce1_' + fixedOpaqueSuffix('nonce-', state.oauth.beginCount);
     var challenge = fixedOpaqueSuffix('challenge-', state.oauth.beginCount);
-    var redirectUri = 'https://script.google.com/macros/d/test-script-id/usercallback';
+    var redirectUri = 'https://script.google.com/macros/s/test-pilot/exec';
     var authorization = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authorization.searchParams.set('client_id', '123456789012-crsequipmenttest.apps.googleusercontent.com');
     authorization.searchParams.set('redirect_uri', redirectUri);
@@ -522,6 +522,10 @@
     if (controls.get('oauth') === 'denied') {
       return authErrorEnvelope('FORBIDDEN', 'Google authorization was denied');
     }
+    if (!rawArgs[2]) return authEnvelope({status:'AWAITING_CONFIRMATION'});
+    if (rawArgs[2] !== 'confirm1_' + 'c'.repeat(43) ||
+      await sha256Base64Url(String(rawArgs[3] || '')) !== flow.sessionTokenHash)
+      return authErrorEnvelope('UNAUTHENTICATED','Wrong confirmation proof');
     flow.completed = true;
     activeSessionHashes[flow.sessionTokenHash] = {
       flowId: flowId,

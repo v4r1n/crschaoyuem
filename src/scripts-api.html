@@ -56,6 +56,19 @@
     const button = document.querySelector('#google-signin-button');
     if (!button) return;
     button.addEventListener('click', startOAuthSignIn);
+    document.querySelector('#oauth-handoff-submit').addEventListener('click', function () {
+      if (!authState.attempt) return;
+      const input = document.querySelector('#oauth-handoff-input');
+      const code = input.value.trim();
+      if (!/^confirm1_[A-Za-z0-9_-]{43}$/.test(code)) {
+        input.setCustomValidity('กรุณาวางรหัสยืนยันให้ครบถ้วน');
+        input.reportValidity();
+        return;
+      }
+      input.setCustomValidity('');
+      authState.attempt.handoffCode = code;
+      input.value = '';
+    });
     authState.initialized = true;
   }
 
@@ -199,7 +212,7 @@
           retryable: true
         });
       }
-      if (attempt.popup.closed) {
+      if (attempt.popup.closed && document.querySelector('#oauth-handoff-panel').hidden) {
         if (!closedAt) closedAt = Date.now();
         if (Date.now() - closedAt > 1500) {
           throw new ClientApiError({
@@ -209,7 +222,16 @@
           });
         }
       }
-      const result = await serverRpc('completeOAuthSignIn', [attempt.flowId, attempt.pollToken]);
+      const handoff = attempt.handoffCode || '';
+      attempt.handoffCode = '';
+      const result = await serverRpc('completeOAuthSignIn',
+        [attempt.flowId, attempt.pollToken, handoff, handoff ? attempt.sessionToken : '']);
+      if (result && result.status === 'AWAITING_CONFIRMATION') {
+        const panel = document.querySelector('#oauth-handoff-panel');
+        if (panel) panel.hidden = false;
+        await delay(750);
+        continue;
+      }
       if (result && result.status === 'COMPLETE') return;
       if (!result || result.status !== 'PENDING') {
         throw new ClientApiError({
@@ -252,6 +274,8 @@
       expiresAt: 0
     };
     authState.attempt = attempt;
+    document.querySelector('#oauth-handoff-panel').hidden = true;
+    document.querySelector('#oauth-handoff-input').value = '';
     setSignInBusy(true);
 
     try {
@@ -296,6 +320,7 @@
     } finally {
       if (authState.attempt === attempt && generation === authState.generation) {
         authState.attempt = null;
+        document.querySelector('#oauth-handoff-panel').hidden = true;
         setSignInBusy(false);
       }
       try { if (!popup.closed) popup.close(); }

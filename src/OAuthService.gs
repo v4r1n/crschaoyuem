@@ -1,7 +1,6 @@
 var GOOGLE_OAUTH_AUTHORIZATION_URL_ = 'https://accounts.google.com/o/oauth2/v2/auth';
 var GOOGLE_OAUTH_TOKEN_URL_ = 'https://oauth2.googleapis.com/token';
-var OAUTH_CACHE_PREFIX_ = 'crs-auth:v1:';
-var OAUTH_STATE_CALLBACK_METHOD_ = 'googleOAuthCallback_';
+var OAUTH_CACHE_PREFIX_ = 'crs-auth:v2:';
 var OAUTH_SECRET_HASH_PATTERN_ = /^[A-Za-z0-9_-]{43}$/;
 var OAUTH_FLOW_ID_PATTERN_ = /^flow1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_CALLBACK_KEY_PATTERN_ = /^callback1_[A-Za-z0-9_-]{43}$/;
@@ -32,13 +31,7 @@ function beginOAuthSignIn(input) {
     var nonce = createOAuthRandomValue_('nonce1_');
     var codeVerifier = createOAuthRandomValue_('pkce1_');
     var codeChallenge = sha256Base64Url_(codeVerifier);
-    var stateToken = ScriptApp.newStateToken()
-      .withMethod(OAUTH_STATE_CALLBACK_METHOD_)
-      .withArgument('oauthCallbackKey', callbackKey)
-      .withArgument('oauthNonce', nonce)
-      .withArgument('oauthCodeVerifier', codeVerifier)
-      .withTimeout(oauthConfig.flowTtlSeconds)
-      .createToken();
+    var stateToken = callbackKey;
 
     var flowCacheKey = oauthFlowCacheKey_(flowId);
     var callbackCacheKey = oauthCallbackCacheKey_(callbackKey);
@@ -51,6 +44,7 @@ function beginOAuthSignIn(input) {
       sessionTokenHash: sessionTokenHash,
       callbackCacheKey: callbackCacheKey,
       clientId: oauthConfig.clientId,
+      redirectUri: oauthConfig.redirectUri,
       createdAt: nowSeconds,
       expiresAt: expiresAt
     };
@@ -58,8 +52,8 @@ function beginOAuthSignIn(input) {
       version: 1,
       flowCacheKey: flowCacheKey,
       visitorBindingHash: visitorBindingHash,
-      nonceHash: sha256Base64Url_(nonce),
-      codeVerifierHash: sha256Base64Url_(codeVerifier),
+      nonce: nonce,
+      codeVerifier: codeVerifier,
       createdAt: nowSeconds,
       expiresAt: expiresAt
     };
@@ -96,7 +90,7 @@ function beginOAuthSignIn(input) {
  * returned: the browser's independently generated session candidate becomes
  * usable only after the verified callback has activated its hash.
  */
-function completeOAuthSignIn(flowId, pollToken) {
+function completeOAuthSignIn(flowId, pollToken, handoffCode, sessionToken) {
   return executeSafely_(function () {
     var normalizedFlowId = requireOAuthFlowId_(flowId);
     var normalizedPollToken = requireOAuthPollToken_(pollToken);
@@ -113,15 +107,37 @@ function completeOAuthSignIn(flowId, pollToken) {
         return { status: 'PENDING', expiresAt: flow.expiresAt };
       }
 
-      removeOAuthCacheKeysBestEffort_(cache, [
-        flowCacheKey,
-        flow.callbackCacheKey,
-        oauthVisitorIndexCacheKey_(visitorBindingHash)
-      ]);
-      if (flow.status === 'AUTHORIZED') {
-        return { status: 'COMPLETE', expiresAt: flow.sessionExpiresAt };
+      if (flow.status === 'AWAITING_CONFIRMATION') {
+        // Polling never discloses the callback proof or activates a session.
+        if (!handoffCode) return { status: 'AWAITING_CONFIRMATION', expiresAt: flow.expiresAt };
+        assertApp_(/^confirm1_[A-Za-z0-9_-]{43}$/.test(String(handoffCode)) &&
+          secureStringEquals_(flow.handoffHash, sha256Base64Url_(handoffCode)) &&
+          secureStringEquals_(flow.sessionTokenHash, sha256Base64Url_(requireOAuthSessionToken_(sessionToken))),
+        'UNAUTHENTICATED', 'รหัสยืนยันไม่ถูกต้อง กรุณาตรวจรหัสจากหน้าต่าง Google', null, false);
+        var user = requireUserForIdentity_({ email: flow.candidate.email });
+        assertApp_(getRuntimeConfig_().ALLOWED_DOMAINS.indexOf(flow.candidate.email.split('@')[1]) !== -1,
+          'FORBIDDEN', 'บัญชีนี้อยู่นอกโดเมนที่องค์กรอนุญาต', null, false);
+        assertApp_(user.user_id === flow.candidate.userId &&
+          flow.candidate.clientId === getRuntimeConfig_().GOOGLE_OAUTH_CLIENT_ID &&
+          flow.candidate.expiresAt > Math.floor(Date.now() / 1000),
+        'UNAUTHENTICATED', 'คำขอลงชื่อเข้าใช้หมดอายุหรือเปลี่ยนแปลงแล้ว', null, false);
+        // Consume before activation. A cache failure can require a fresh login,
+        // but must not permit the callback confirmation to activate twice.
+        var candidate = flow.candidate;
+        flow.status = 'CONSUMED';
+        delete flow.candidate;
+        delete flow.handoffHash;
+        putOAuthCacheJson_(cache, flowCacheKey, flow,
+          Math.max(1, flow.expiresAt - Math.floor(Date.now() / 1000)));
+        putOAuthCacheJson_(cache, oauthSessionCacheKeyFromHash_(flow.sessionTokenHash), candidate,
+          candidate.expiresAt - Math.floor(Date.now() / 1000));
+        return { status: 'COMPLETE', expiresAt: candidate.expiresAt };
       }
-
+      assertApp_(flow.status !== 'CONSUMED', 'UNAUTHENTICATED',
+        'คำขอลงชื่อเข้าใช้นี้ถูกใช้แล้ว', null, false);
+      flow.status = 'CONSUMED';
+      putOAuthCacheJson_(cache, flowCacheKey, flow,
+        Math.max(1, flow.expiresAt - Math.floor(Date.now() / 1000)));
       var failure = flow.error && typeof flow.error === 'object' ? flow.error : {};
       throw new AppError_(
         isSafeOAuthFailureCode_(failure.code) ? failure.code : 'UNAUTHENTICATED',
@@ -147,23 +163,17 @@ function logoutSession(sessionToken) {
 }
 
 /**
- * Apps Script dispatches this private method only after decrypting and
- * validating its StateTokenBuilder state at /usercallback.
+ * Private implementation reached only through doGet callback routing.
+ * Opaque state is looked up and consumed server-side, not decoded by Apps Script.
  */
 function googleOAuthCallback_(event) {
   var claim = null;
-  var succeeded = false;
+  var handoffCode = '';
   try {
-    var callbackKey = requireOAuthCallbackKey_(
-      singleOAuthCallbackParameter_(event, 'oauthCallbackKey')
-    );
-    var nonce = requireOAuthNonce_(singleOAuthCallbackParameter_(event, 'oauthNonce'));
-    var codeVerifier = requireOAuthPkceVerifier_(
-      singleOAuthCallbackParameter_(event, 'oauthCodeVerifier')
-    );
+    var callbackKey = requireOAuthCallbackKey_(singleOAuthCallbackParameter_(event, 'state'));
     var code = optionalSingleOAuthCallbackParameter_(event, 'code');
     var oauthError = optionalSingleOAuthCallbackParameter_(event, 'error');
-    claim = claimOAuthFlow_(callbackKey, nonce, codeVerifier, currentVisitorBindingHash_());
+    claim = claimOAuthFlow_(callbackKey);
     assertApp_(Boolean(code) !== Boolean(oauthError), 'UNAUTHENTICATED',
       'ผลการลงชื่อเข้าใช้ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง', null, false);
     if (oauthError) {
@@ -176,11 +186,10 @@ function googleOAuthCallback_(event) {
     }
 
     var authorizationCode = requireOAuthAuthorizationCode_(code);
-    var idToken = exchangeGoogleAuthorizationCode_(authorizationCode, codeVerifier);
-    var identity = verifyGoogleIdToken_(idToken, nonce);
+    var idToken = exchangeGoogleAuthorizationCode_(authorizationCode, claim.codeVerifier, claim.redirectUri);
+    var identity = verifyGoogleIdToken_(idToken, claim.nonce);
     var user = requireUserForIdentity_(identity);
-    finalizeOAuthFlowSuccess_(claim, identity, user);
-    succeeded = true;
+    handoffCode = finalizeOAuthFlowSuccess_(claim, identity, user);
   } catch (error) {
     if (claim) finalizeOAuthFlowFailureBestEffort_(claim, error);
     console.warn(JSON.stringify({
@@ -188,7 +197,7 @@ function googleOAuthCallback_(event) {
       code: error && error.name === 'AppError' ? error.code : 'INTERNAL'
     }));
   }
-  return createOAuthCallbackOutput_(succeeded);
+  return createOAuthCallbackOutput_(handoffCode);
 }
 
 function getGoogleOAuthServerConfig_() {
@@ -202,15 +211,13 @@ function getGoogleOAuthServerConfig_() {
   assertApp_(Array.isArray(config.ALLOWED_DOMAINS) && config.ALLOWED_DOMAINS.length > 0 &&
     config.ALLOWED_DOMAINS.every(isSafeDomainValue_), 'CONFIG_ERROR',
   'กรุณาตั้งค่า ALLOWED_DOMAINS ก่อนเปิดใช้งานระบบ', null, false);
-  var scriptId = '';
-  try { scriptId = String(ScriptApp.getScriptId() || '').trim(); }
-  catch (error) { scriptId = ''; }
-  assertApp_(/^[A-Za-z0-9_-]{20,200}$/.test(scriptId), 'CONFIG_ERROR',
-    'ไม่พบ Apps Script ID สำหรับ OAuth callback', null, false);
+  var redirectUri = String(config.GOOGLE_OAUTH_REDIRECT_URI || '').trim();
+  assertApp_(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(redirectUri),
+    'CONFIG_ERROR', 'กรุณาตั้ง GOOGLE_OAUTH_REDIRECT_URI เป็น exact Pilot /exec URL', null, false);
   return {
     clientId: clientId,
     clientSecret: clientSecret,
-    redirectUri: 'https://script.google.com/macros/d/' + encodeURIComponent(scriptId) + '/usercallback',
+    redirectUri: redirectUri,
     flowTtlSeconds: config.AUTH_FLOW_TTL_SECONDS,
     sessionTtlSeconds: config.AUTH_SESSION_TTL_SECONDS
   };
@@ -237,7 +244,7 @@ function buildGoogleAuthorizationUrl_(oauthConfig, stateToken, nonce, codeChalle
   });
 }
 
-function exchangeGoogleAuthorizationCode_(authorizationCode, codeVerifier) {
+function exchangeGoogleAuthorizationCode_(authorizationCode, codeVerifier, redirectUri) {
   var oauthConfig = getGoogleOAuthServerConfig_();
   var response;
   try {
@@ -250,7 +257,7 @@ function exchangeGoogleAuthorizationCode_(authorizationCode, codeVerifier) {
         code: authorizationCode,
         code_verifier: codeVerifier,
         grant_type: 'authorization_code',
-        redirect_uri: oauthConfig.redirectUri
+        redirect_uri: redirectUri
       }),
       followRedirects: false,
       muteHttpExceptions: true,
@@ -288,7 +295,7 @@ function exchangeGoogleAuthorizationCode_(authorizationCode, codeVerifier) {
   return tokens.id_token;
 }
 
-function claimOAuthFlow_(callbackKey, nonce, codeVerifier, visitorBindingHash) {
+function claimOAuthFlow_(callbackKey) {
   return withOAuthLock_(function () {
     var cache = getOAuthScriptCache_();
     var callbackCacheKey = oauthCallbackCacheKey_(callbackKey);
@@ -296,15 +303,8 @@ function claimOAuthFlow_(callbackKey, nonce, codeVerifier, visitorBindingHash) {
     var nowSeconds = Math.floor(Date.now() / 1000);
     assertApp_(callbackRecord && callbackRecord.expiresAt > nowSeconds,
       'UNAUTHENTICATED', 'คำขอลงชื่อเข้าใช้หมดอายุหรือถูกใช้แล้ว กรุณาลองใหม่อีกครั้ง', null, false);
-    assertApp_(secureStringEquals_(callbackRecord.visitorBindingHash, visitorBindingHash),
-      'UNAUTHENTICATED', 'บริบทผู้ใช้ของคำขอลงชื่อเข้าใช้ไม่ตรงกัน กรุณาเริ่มใหม่จากหน้าระบบ', null, false);
-    assertApp_(secureStringEquals_(callbackRecord.nonceHash, sha256Base64Url_(nonce)) &&
-      secureStringEquals_(callbackRecord.codeVerifierHash, sha256Base64Url_(codeVerifier)),
-    'UNAUTHENTICATED', 'ข้อมูลป้องกันคำขอลงชื่อเข้าใช้ไม่ถูกต้อง', null, false);
-
     var flow = readOAuthFlowRecord_(cache, callbackRecord.flowCacheKey);
-    assertApp_(flow && flow.status === 'PENDING' && flow.expiresAt > nowSeconds &&
-      secureStringEquals_(flow.visitorBindingHash, visitorBindingHash),
+    assertApp_(flow && flow.status === 'PENDING' && flow.expiresAt > nowSeconds && flow.redirectUri === getGoogleOAuthServerConfig_().redirectUri,
     'UNAUTHENTICATED', 'คำขอลงชื่อเข้าใช้หมดอายุหรือถูกใช้แล้ว กรุณาลองใหม่อีกครั้ง', null, false);
     var claimId = createOAuthRandomValue_('claim1_');
     flow.status = 'PROCESSING';
@@ -316,7 +316,10 @@ function claimOAuthFlow_(callbackKey, nonce, codeVerifier, visitorBindingHash) {
     return {
       flowCacheKey: callbackRecord.flowCacheKey,
       claimId: claimId,
-      visitorBindingHash: visitorBindingHash,
+      visitorBindingHash: flow.visitorBindingHash,
+      nonce: callbackRecord.nonce,
+      codeVerifier: callbackRecord.codeVerifier,
+      redirectUri: flow.redirectUri,
       expiresAt: flow.expiresAt
     };
   });
@@ -332,7 +335,7 @@ function finalizeOAuthFlowSuccess_(claim, identity, user) {
   assertApp_(Number.isInteger(sessionExpiresAt) && sessionExpiresAt > nowSeconds,
     'UNAUTHENTICATED', 'หลักฐานการลงชื่อเข้าใช้หมดอายุแล้ว กรุณาลองใหม่อีกครั้ง', null, false);
 
-  withOAuthLock_(function () {
+  return withOAuthLock_(function () {
     var cache = getOAuthScriptCache_();
     var flow = readOAuthFlowRecord_(cache, claim.flowCacheKey);
     assertClaimedOAuthFlow_(flow, claim);
@@ -349,19 +352,15 @@ function finalizeOAuthFlowSuccess_(claim, identity, user) {
       issuedAt: nowSeconds,
       expiresAt: sessionExpiresAt
     };
-    var sessionCacheKey = oauthSessionCacheKeyFromHash_(flow.sessionTokenHash);
-    try {
-      cache.put(sessionCacheKey, JSON.stringify(sessionRecord), sessionExpiresAt - nowSeconds);
-      flow.status = 'AUTHORIZED';
-      flow.sessionExpiresAt = sessionExpiresAt;
-      delete flow.claimId;
-      putOAuthCacheJson_(cache, claim.flowCacheKey, flow,
-        Math.max(1, flow.expiresAt - nowSeconds));
-    } catch (error) {
-      removeOAuthCacheKeysBestEffort_(cache, [sessionCacheKey]);
-      throw new AppError_('AUTH_SERVICE_UNAVAILABLE',
-        'ไม่สามารถสร้าง session สำหรับระบบได้ กรุณาลองใหม่อีกครั้ง', null, true);
-    }
+    var handoffCode = createOAuthRandomValue_('confirm1_');
+    flow.status = 'AWAITING_CONFIRMATION';
+    flow.candidate = sessionRecord;
+    flow.handoffHash = sha256Base64Url_(handoffCode);
+    flow.sessionExpiresAt = sessionExpiresAt;
+    delete flow.claimId;
+    putOAuthCacheJson_(cache, claim.flowCacheKey, flow,
+      Math.max(1, flow.expiresAt - nowSeconds));
+    return handoffCode;
   });
 }
 
@@ -431,7 +430,7 @@ function assertLiveOAuthFlow_(flow, visitorBindingHash, pollTokenHash) {
   assertApp_(secureStringEquals_(flow.visitorBindingHash, visitorBindingHash) &&
     secureStringEquals_(flow.pollTokenHash, pollTokenHash), 'UNAUTHENTICATED',
   'ไม่สามารถยืนยันคำขอลงชื่อเข้าใช้นี้ได้', null, false);
-  assertApp_(['PENDING', 'PROCESSING', 'AUTHORIZED', 'DENIED'].indexOf(flow.status) !== -1,
+  assertApp_(['PENDING', 'PROCESSING', 'AWAITING_CONFIRMATION', 'DENIED', 'CONSUMED'].indexOf(flow.status) !== -1,
     'UNAUTHENTICATED', 'สถานะคำขอลงชื่อเข้าใช้ไม่ถูกต้อง', null, false);
 }
 
@@ -446,7 +445,7 @@ function assertClaimedOAuthFlow_(flow, claim) {
 function readOAuthFlowRecord_(cache, key) {
   var record = readOAuthCacheJson_(cache, key);
   if (!record || record.version !== 1 ||
-    ['PENDING', 'PROCESSING', 'AUTHORIZED', 'DENIED'].indexOf(record.status) === -1 ||
+    ['PENDING', 'PROCESSING', 'AWAITING_CONFIRMATION', 'DENIED', 'CONSUMED'].indexOf(record.status) === -1 ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || '')) ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.pollTokenHash || '')) ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.sessionTokenHash || '')) ||
@@ -457,7 +456,7 @@ function readOAuthFlowRecord_(cache, key) {
     record.expiresAt <= record.createdAt) return null;
   if (record.status === 'PROCESSING' &&
     !/^claim1_[A-Za-z0-9_-]{43}$/.test(String(record.claimId || ''))) return null;
-  if (record.status === 'AUTHORIZED' &&
+  if (record.status === 'AWAITING_CONFIRMATION' &&
     (!Number.isInteger(record.sessionExpiresAt) || record.sessionExpiresAt <= record.createdAt)) return null;
   if (record.status === 'DENIED' &&
     (!record.error || typeof record.error !== 'object' || Array.isArray(record.error))) return null;
@@ -470,8 +469,8 @@ function readOAuthCallbackRecord_(cache, key) {
     typeof record.flowCacheKey !== 'string' ||
     record.flowCacheKey.indexOf(OAUTH_CACHE_PREFIX_ + 'flow:') !== 0 ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || '')) ||
-    !OAUTH_SECRET_HASH_PATTERN_.test(String(record.nonceHash || '')) ||
-    !OAUTH_SECRET_HASH_PATTERN_.test(String(record.codeVerifierHash || '')) ||
+    !OAUTH_NONCE_PATTERN_.test(String(record.nonce || '')) ||
+    !OAUTH_PKCE_VERIFIER_PATTERN_.test(String(record.codeVerifier || '')) ||
     !Number.isInteger(record.createdAt) || !Number.isInteger(record.expiresAt) ||
     record.expiresAt <= record.createdAt) return null;
   return record;
@@ -691,7 +690,13 @@ function createOAuthRandomValue_(prefix) {
     Utilities.getUuid(),
     String(Date.now())
   ].join('|');
-  return prefix + sha256Base64Url_(material);
+  // Keyed PRF: UUID/time supply uniqueness, the server-only OAuth client
+  // secret supplies unpredictability (do not rely on UUID as a CSPRNG).
+  var digest = Utilities.computeHmacSha256Signature(
+    'crs-oauth-v2|' + prefix + '|' + material,
+    getGoogleOAuthServerConfig_().clientSecret,
+    Utilities.Charset.UTF_8);
+  return prefix + Utilities.base64EncodeWebSafe(digest).replace(/=+$/, '');
 }
 
 function sha256Base64Url_(value) {
@@ -721,15 +726,19 @@ function formUrlEncode_(values) {
   }).join('&');
 }
 
-function createOAuthCallbackOutput_(succeeded) {
-  var title = succeeded ? 'ลงชื่อเข้าใช้สำเร็จ' : 'ลงชื่อเข้าใช้ไม่สำเร็จ';
-  var message = succeeded
-    ? 'กลับไปยังหน้าระบบได้แล้ว หน้าต่างนี้จะปิดจากหน้าระบบโดยอัตโนมัติ'
-    : 'กลับไปยังหน้าระบบเพื่อดูรายละเอียดและลองอีกครั้ง';
+function createOAuthCallbackOutput_(handoffCode) {
+  var valid = /^confirm1_[A-Za-z0-9_-]{43}$/.test(String(handoffCode || ''));
+  var title = valid ? 'ยืนยันการลงชื่อเข้าใช้' : 'ลงชื่อเข้าใช้ไม่สำเร็จ';
+  var message = valid
+    ? 'คัดลอกรหัสด้านล่างกลับไปวางในแท็บ CRS ที่คุณเริ่มลงชื่อเข้าใช้ด้วยตนเองเท่านั้น ห้ามส่งรหัสให้ผู้อื่น หากมีคนส่งลิงก์ให้คุณลงชื่อเข้าใช้ ให้ปิดหน้านี้'
+    : 'คำขอไม่ถูกต้อง หมดอายุ หรือถูกใช้แล้ว กรุณากลับไปเริ่มลงชื่อเข้าใช้ใหม่';
   var html = '<!doctype html><html lang="th"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">' +
-    '<title>' + title + '</title></head><body>' +
-    '<main><h1>' + title + '</h1><p>' + message + '</p></main></body></html>';
+    '<title>' + title + '</title></head><body><main><h1>' + title +
+    '</h1><p>' + message + '</p>' +
+    (valid ? '<label>รหัสยืนยัน <input id="oauth-handoff-code" readonly size="56" value="' +
+      handoffCode + '"></label><p>รหัสใช้ได้ครั้งเดียวและหมดอายุอัตโนมัติ</p>' : '') +
+    '</main></body></html>';
   return HtmlService.createHtmlOutput(html).setTitle(title);
 }

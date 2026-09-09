@@ -430,20 +430,17 @@ test('server-side OAuth/OIDC uses a protected callback and memory-only applicati
   assert.doesNotMatch(authoredRuntime, /getUserProperties\s*\(|UserProperties/,
     'execute-as-deployer authentication must not use shared UserProperties');
 
-  assert.match(oauth, /ScriptApp\.newStateToken\s*\(\)/);
-  assert.match(oauth, /\.withMethod\s*\(\s*OAUTH_STATE_CALLBACK_METHOD_\s*\)/);
-  assert.match(oauth, /\.withArgument\s*\(\s*['"]oauthNonce['"]/);
-  assert.match(oauth, /\.withArgument\s*\(\s*['"]oauthCodeVerifier['"]/);
-  assert.match(oauth, /\.withTimeout\s*\(/);
-  assert.match(oauth,
-    /https:\/\/script\.google\.com\/macros\/d\/[\s\S]*?\/usercallback/);
+  assert.doesNotMatch(oauth, /newStateToken|withMethod|usercallback/);
+  assert.match(oauth, /GOOGLE_OAUTH_REDIRECT_URI/);
+  assert.match(oauth, /computeHmacSha256Signature/);
+  assert.match(read('src/Code.gs'), /return googleOAuthCallback_\(event\)/);
   assert.match(oauth, /response_type:\s*['"]code['"]/);
   assert.match(oauth, /code_challenge_method:\s*['"]S256['"]/);
   assert.match(oauth, /scope:\s*['"]openid email['"]/);
   assert.match(oauth, /https:\/\/oauth2\.googleapis\.com\/token/);
   assert.match(oauth, /client_secret:\s*oauthConfig\.clientSecret/);
   assert.match(oauth, /code_verifier:\s*codeVerifier/);
-  assert.match(oauth, /verifyGoogleIdToken_\s*\(\s*idToken\s*,\s*nonce\s*\)/);
+  assert.match(oauth, /verifyGoogleIdToken_\s*\(\s*idToken\s*,\s*claim\.nonce\s*\)/);
   assert.match(oauth, /CacheService\.getScriptCache\s*\(\)/);
   assert.match(oauth, /Session\.getTemporaryActiveUserKey\s*\(\)/);
   assert.match(oauth, /function requireApplicationSession_\s*\(sessionToken\)/);

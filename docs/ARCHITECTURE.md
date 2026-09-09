@@ -10,9 +10,12 @@
 flowchart LR
   U -->|HTTPS| H[Apps Script HTML Service SPA]
   H -->|Authorization request: state + nonce + PKCE| G[Google OAuth/OIDC]
-  G -->|One-time code + protected state| C[Apps Script /usercallback]
+  G -->|One-time code + opaque state| C[Apps Script doGet /exec]
   C -->|Server-side code exchange| G
-  C -->|Verify ID token + Users row; activate hashed session| K[ScriptCache auth records]
+  C -->|Verify identity; pending candidate only| K[ScriptCache auth records]
+  C -->|Display one-time confirmation code| U[User]
+  U -->|Paste code into original tab| H
+  H -->|Confirmation code + poll/session proofs activate session| K
   H -->|google.script.run + opaque session| A[Guarded RPC API]
   A -->|Validate session; re-read Users row + role| V[Auth + authorization]
   V --> S[Domain services and state machine]
@@ -20,7 +23,7 @@ flowchart LR
   R --> DB[(Google Sheets)]
   S --> F[Image service]
   F --> D[(Google Drive)]
-  S --> C[CacheService]
+  S --> PC[Performance cache]
 ```
 
 ### Client
@@ -35,7 +38,7 @@ QR controller สร้างสัญลักษณ์และสติกเ
 
 ### API and authorization
 
-Auth bootstrap เปิดเฉพาะ `beginOAuthSignIn`, `completeOAuthSignIn` และ `logoutSession`; endpoint เหล่านี้ไม่คืน business data และใช้ secret/flow แบบเดาผ่านไม่ได้ ส่วน callback เป็น private Apps Script state-token method การเริ่ม flow ใช้ CSRF state ที่ Apps Script ลงนาม/เข้ารหัส, OIDC nonce, PKCE S256 และ one-time cache record Callback แลก code กับ Google ผ่าน server-side POST โดยใช้ Web OAuth Client secret จาก Script Properties แล้วตรวจ ID token ด้วย Google JWKS ครบทั้ง RS256, `iss`, `aud`/`azp`, `iat`/`nbf`/`exp`, nonce, `sub`, `email_verified` และ authoritative-email rule ก่อนตรวจ exact Users row, `ACTIVE` และ role
+Auth bootstrap เปิดเฉพาะ `beginOAuthSignIn`, `completeOAuthSignIn` และ `logoutSession`; endpoint เหล่านี้ไม่คืน business data และใช้ secret/flow แบบเดาผ่านไม่ได้ ส่วน callback เป็น private implementation ที่ doGet เรียกหลังแยก callback request การเริ่ม flow ใช้ CSRF state ที่ server สร้างด้วย HMAC-SHA256 keyed PRF, OIDC nonce, PKCE S256 และ one-time cache record Callback แลก code กับ Google ผ่าน server-side POST โดยใช้ Web OAuth Client secret จาก Script Properties แล้วตรวจ ID token ด้วย Google JWKS ครบทั้ง RS256, `iss`, `aud`/`azp`, `iat`/`nbf`/`exp`, nonce, `sub`, `email_verified` และ authoritative-email rule ก่อนตรวจ exact Users row, `ACTIVE` และ role
 
 API ธุรกิจเปิดเฉพาะ use-case ที่ชัดเจน เช่น `listEquipment`, `createBorrowRequest`, `adminApproveBorrow` และ `adminCompleteReturn` ไม่เปิด generic Sheet CRUD ทุก public wrapper รับ application session เป็น argument แรก Session record อยู่ใน `ScriptCache` ภายใต้ hash ของ secret, ผูกกับ verified `sub`/email/User ID/OAuth client และ temporary active-user key ของ Apps Script และหมดอายุไม่เกินทั้ง ID-token expiry กับ `AUTH_SESSION_TTL_SECONDS` ทุก call ตรวจ session/domain แล้ว re-read Users row ปัจจุบัน; ไม่มี/invalid/expired/evicted session, unknown/inactive user หรือสิทธิ์ไม่พอถูกปฏิเสธก่อน handler และทุก mutation re-read Users row ภายใน lock เพื่อปิด privilege escalation `CacheService` อาจ evict ก่อน TTL ได้ ซึ่งมีผลเพียงให้ session fail closed และต้องลงชื่อเข้าใช้ใหม่
 
@@ -93,8 +96,8 @@ Google Sheets ไม่มี rollback/cross-sheet transaction จริง ล�
 - Authorization code แลก token เฉพาะฝั่ง server; Google ID token ไม่ออกจาก callback backend และต้องตรวจ signature/claims/nonce ครบก่อนสร้าง session มันไม่ใช่ authorization โดยตัวเอง และ server ไม่รับ email, role, audit actor, timestamp หรือ protected status จาก browser เป็นความจริง
 - บัญชี `@gmail.com` ต้องมี `email_verified=true`; Google Workspace/non-Gmail ต้องมี `email_verified=true` และ `hd` ตรง exact email domain ที่ allowlist ระบบไม่ยอมรับ Google Account ที่ใช้อีเมล third-party และไม่มี authoritative `hd`
 - Users row เป็น explicit application allowlist: ไม่มีการ auto-provision, unknown/inactive ถูกปฏิเสธ และ Admin endpoint ตรวจ role จาก row ปัจจุบันทุกครั้ง
-- State/nonce/PKCE และ auth/session record ใช้ครั้งเดียวหรือมีอายุสั้น; raw application session อยู่ใน page memory เท่านั้น และ auth state/session ไม่ใช้ `UserProperties` เพราะ `USER_DEPLOYING` อาจทำให้ผู้ใช้ทั้งหมดเห็น context เจ้าของเดียวกัน
-- `Session.getTemporaryActiveUserKey()` ใช้เป็น secondary context binding เท่านั้น ไม่ใช่ visitor identity; verified Google token และ Users row ยังเป็น identity/authorization source ที่แท้จริง Callback กับหน้าหลักต้องเห็น temporary key เดียวกัน จึงต้อง pilot แยก browser profile กับ Workspace/Gmail ก่อนเปิด production
+- Opaque state/nonce/PKCE และ auth/session record ใช้ครั้งเดียวหรือมีอายุสั้น; raw application session อยู่ใน page memory เท่านั้น และ auth state/session ไม่ใช้ `UserProperties` เพราะ `USER_DEPLOYING` อาจทำให้ผู้ใช้ทั้งหมดเห็น context เจ้าของเดียวกัน
+- `Session.getTemporaryActiveUserKey()` ใช้เป็น secondary context binding เท่านั้น ไม่ใช่ visitor identity; verified Google token และ Users row ยังเป็น identity/authorization source ที่แท้จริง Callback ไม่ตรวจ temporary key และต้องใช้รหัสยืนยันจากหน้า callback ร่วมกับ poll/session proof ก่อนเปิด session จึงต้อง pilot แยก browser profile กับ Workspace/Gmail ก่อนเปิด production
 - user อ่าน Borrow ของตนเองเท่านั้น; admin อ่านและ mutate ข้อมูลส่วนกลางตาม action ที่อนุญาต
 - ข้อมูล text ถูกจำกัดความยาว ป้องกัน formula injection ก่อนลง Sheet และ escape ก่อนเข้า HTML
 - QR มีไว้ระบุ Asset ID/route เท่านั้น ไม่ให้สิทธิ์และไม่ trigger mutation อัตโนมัติ
@@ -110,4 +113,14 @@ Google Sheets ไม่มี rollback/cross-sheet transaction จริง ล�
 
 โปรเจกต์ Apps Script แบบ standalone เชื่อม Google Sheet, Drive folder และ Web OAuth Client ID/secret ด้วย Script Properties Production ใช้ versioned Web app แบบ `USER_DEPLOYING` + `ANYONE` ซึ่งหมายถึง Google Account ที่ลงชื่อเข้าใช้แล้ว ไม่ใช่ `ANYONE_ANONYMOUS`; backend จึงใช้สิทธิ์ผู้ deploy โดยผู้ใช้ทั่วไปไม่มี direct access ต่อ Sheet/folder แต่ identity มาจาก ID token ที่ server แลกและตรวจเอง
 
-OAuth Client ต้องเป็นชนิด **Web application** และลงทะเบียน Authorized redirect URI แบบ exact เป็น `https://script.google.com/macros/d/{SCRIPT_ID}/usercallback`; flow นี้ไม่ใช้ Authorized JavaScript Origin และไม่โหลด GIS JavaScript จาก iframe การแก้ deployment เดิมให้ชี้ version ใหม่จะรักษา `/exec` URL และ QR sticker เดิม แต่ต้องทำ deployment ชั่วคราวเพื่อ pilot callback/temporary-user-key binding กับทั้ง Workspace และ Gmail ก่อนเปลี่ยน production รายละเอียดอยู่ใน [DEPLOYMENT.md](DEPLOYMENT.md)
+OAuth Client ต้องเป็นชนิด **Web application** และลงทะเบียน Authorized redirect URI แบบ exact เป็น `https://script.google.com/macros/s/{PILOT_DEPLOYMENT_ID}/exec`; flow นี้ไม่ใช้ Authorized JavaScript Origin และไม่โหลด GIS JavaScript จาก iframe การแก้ deployment เดิมให้ชี้ version ใหม่จะรักษา `/exec` URL และ QR sticker เดิม แต่ต้องทำ deployment ชั่วคราวเพื่อ pilot callback/temporary-user-key binding กับทั้ง Workspace และ Gmail ก่อนเปลี่ยน production รายละเอียดอยู่ใน [DEPLOYMENT.md](DEPLOYMENT.md)
+
+## Pilot callback confirmation update
+
+Visitor OAuth returns to the exact Pilot `/exec` URL configured in `GOOGLE_OAUTH_REDIRECT_URI` (Script Properties) and the OAuth Web application's Authorized redirect URIs. Do not use `/usercallback`, StateTokenBuilder, wildcard origins, or the production URL. `doGet` routes any code/error/state request to a private callback implementation; malformed/duplicate/replayed/expired state fails closed.
+
+Callback verifies Google identity but only stores a pending candidate, NOT an active session. It displays a one-time high-entropy confirmation code in minimal HTML without external assets. The user copies it to the original CRS tab. Confirmation requires that code plus the browser-held poll AND session proofs; polling alone never activates a session or returns the confirmation code. State and confirmation are bound to one flow and expire. Users/ACTIVE/Role are checked again at activation and on every business RPC. Copying the code to an attacker would authorize that attacker's flow: the UI explicitly warns never to share codes or complete login links sent by someone else.
+
+The callback does NOT read or compare `getTemporaryActiveUserKey()`. Its context may differ from the original RPC context. The existing temporary-key check remains only between begin/complete/business RPCs as additional defense; it is not relied on to stop attacker-started/victim-redeemed callbacks. No Google/session token appears in URLs. Raw callback state is hashed in cache; nonce/PKCE verifier are transient server-only cache data. Random server values use a domain-separated HMAC-SHA256 PRF keyed by the confidential OAuth client secret with UUID/time uniqueness input; protect/rotate that secret and never log it.
+
+Deployment procedure: pass all tests, back up HEAD, upload, create an immutable version, download that version and compare all source files, then update ONLY the existing Pilot deployment. Production promotion requires real YRU/Gmail login, confirmation, session isolation, and authorization acceptance. A configuration change does not prove successful login.

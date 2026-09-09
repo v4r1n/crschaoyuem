@@ -36,6 +36,12 @@ var CLIENT_ROUTES_ = Object.freeze([
  * query parameters are reduced to an allowlisted route and generated Asset ID.
  */
 function doGet(event) {
+  var callbackParams = event && event.parameter || {};
+  var callbackLists = event && event.parameters || {};
+  if (['code', 'error', 'state'].some(function (key) {
+    return Object.prototype.hasOwnProperty.call(callbackParams, key) ||
+      Object.prototype.hasOwnProperty.call(callbackLists, key);
+  })) return googleOAuthCallback_(event);
   var navigation = resolveInitialNavigation_(event);
   var template = HtmlService.createTemplateFromFile('index');
   template.initialView = navigation.view;

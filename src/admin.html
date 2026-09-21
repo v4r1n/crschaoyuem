@@ -611,8 +611,6 @@
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
           <form id="form-admin-user" novalidate>
-            <input name="user_id" type="hidden">
-            <input name="expected_version" type="hidden">
             <input name="command_id" type="hidden">
             <div class="modal-header">
               <h2 id="admin-user-form-title" class="modal-title fs-5">เพิ่มผู้ใช้</h2>
@@ -620,7 +618,8 @@
             </div>
             <div class="modal-body">
               <div class="mb-3">
-                <label for="admin-user-email-input" class="form-label">อีเมล Google Workspace <span class="text-danger" aria-hidden="true">*</span></label>
+                <p data-user-id-display hidden></p>
+                <label for="admin-user-email-input" class="form-label">อีเมลบัญชี Google (Workspace / Gmail) <span class="text-danger" aria-hidden="true">*</span></label>
                 <input id="admin-user-email-input" name="email" type="email" class="form-control" maxlength="254" required autocomplete="off">
                 <div class="invalid-feedback" data-field-error="email"></div>
               </div>

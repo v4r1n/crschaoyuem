@@ -66,7 +66,7 @@ test('all server, browser, and manifest sources compile', () => {
     access: 'ANYONE',
     executeAs: 'USER_DEPLOYING',
   });
-  assert.equal(serverFiles.length, 25);
+  assert.equal(serverFiles.length, 26);
   assert.equal(browserFiles.length, 9);
 });
 
@@ -75,7 +75,7 @@ test('deployment runbook covers every runtime file, config key, and requested st
   const runtimeFiles = fs.readdirSync(SRC)
     .filter((file) => /\.(?:gs|html|json)$/.test(file))
     .sort();
-  assert.equal(runtimeFiles.length, 45);
+  assert.equal(runtimeFiles.length, 46);
   for (const file of runtimeFiles) {
     const escapedFile = file.replaceAll('.', '\\.');
     assert.match(guide, new RegExp(`\\b${escapedFile}\\b`),
@@ -121,6 +121,8 @@ test('server exposes only the guarded RPCs and deliberate Apps Script entry poin
     'adminUpdateCategory',
     'adminUpdateEquipment',
     'adminUpdateUser',
+    'adminAuditLegacyUsers',
+    'adminRepairLegacyUser',
     'adminUploadEquipmentImage',
     'beginOAuthSignIn',
     'completeOAuthSignIn',
@@ -399,6 +401,18 @@ test('project-authored markup keeps the QR scanner passive and HTML safe', () =>
   assert.doesNotMatch(authored, /\son[a-z]+\s*=/i);
   assert.doesNotMatch(authored, /javascript\s*:/i);
   assert.match(read('src/scripts-qr.html'), /\.scanFile\s*\(/);
+});
+
+test('login access card exposes only Google sign-in and has no retry handler', () => {
+  const index = read('src/index.html');
+  const core = read('src/scripts-core.html');
+  const accessCard = index.match(/<section[\s\S]*?id="access-state"[\s\S]*?<\/section>/);
+  assert.ok(accessCard, 'access-state section must exist');
+  assert.equal((accessCard[0].match(/<button\b/g) || []).length, 2,
+    'access card contains Google sign-in plus the hidden OAuth confirmation button');
+  assert.match(accessCard[0], /data-action="google-signin"/);
+  assert.doesNotMatch(accessCard[0], /retry-bootstrap|ลองอีกครั้ง/);
+  assert.doesNotMatch(core, /retry-bootstrap/);
 });
 
 test('server-side OAuth/OIDC uses a protected callback and memory-only application session', () => {

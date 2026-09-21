@@ -37,6 +37,8 @@ const PUBLIC_RPC_NAMES = Object.freeze([
   'adminUpdateCategory',
   'adminUpdateEquipment',
   'adminUpdateUser',
+  'adminAuditLegacyUsers',
+  'adminRepairLegacyUser',
   'adminUploadEquipmentImage',
   'createBorrowRequest',
   'getAppBootstrap',
@@ -74,6 +76,7 @@ const SOURCE_FILES = [
   'Migrations.gs',
   'HistoryService.gs',
   'OperationService.gs',
+  'OperationAdminService.gs',
   'IdentityService.gs',
   'OAuthService.gs',
   'Code.gs',
@@ -303,6 +306,7 @@ class MemorySpreadsheet {
   }
 
   getId() { return this.id; }
+  getSheets() { return Array.from(this.sheets.values()); }
   getSheetByName(name) { return this.sheets.get(String(name)) || null; }
 
   insertSheet(name) {

@@ -69,7 +69,7 @@ Standalone project เป็นรูปแบบหลักของระบ�
 4. แทนที่ manifest ด้วยเนื้อหาจาก `src/appsscript.json`
 5. บันทึกทุกไฟล์ แล้วตรวจว่าไม่มีไฟล์ชื่อซ้ำ เช่น `Code.gs.gs` หรือไฟล์ runtime เก่าที่ไม่มีใน inventory
 
-ไฟล์ Script จำนวน 25 ไฟล์:
+ไฟล์ Script จำนวน 26 ไฟล์ (รวม `AuthorizeTest.gs` ซึ่งเก็บ helper `authorizePilot_()` แบบ private สำหรับ operator เท่านั้น):
 
 ```text
 Api.gs
@@ -123,7 +123,7 @@ vendor-html5-qrcode.html
 vendor-qrcode-generator.html
 ```
 
-รวม manifest แล้วมี runtime source 45 ไฟล์ ไม่ต้องอัปโหลด `docs/`, `tests/`, `node_modules/`, `package.json` หรือไฟล์ license เข้า Apps Script การทำงานของไฟล์ `.gs` ไม่ขึ้นกับลำดับที่แสดงใน editor
+รวม manifest แล้วมี runtime source 46 ไฟล์ ไม่ต้องอัปโหลด `docs/`, `tests/`, `node_modules/`, `package.json` หรือไฟล์ license เข้า Apps Script การทำงานของไฟล์ `.gs` ไม่ขึ้นกับลำดับที่แสดงใน editor
 
 ก่อนส่ง source ขึ้น production ผู้พัฒนาควรรันจาก repository ด้วย Node.js 20 ขึ้นไป:
 
@@ -361,7 +361,7 @@ Session ใช้ shared ScriptCache ที่แยก record ด้วย hash
 
 1. หยุดหรือแจ้ง maintenance window สำหรับ mutation สำคัญ
 2. สำรอง Sheet และรัน Integrity audit ก่อนเปลี่ยนรุ่น
-3. อัปโหลด source รุ่นใหม่เข้า Apps Script project เดิมให้ครบ 45 runtime files และเทียบ inventory สองทาง ไฟล์ `.gs/.html` เก่าที่ถูกถอดจาก repository ต้องผ่าน review แล้วนำออกจาก project ด้วย เพราะไฟล์ `.gs` ที่ค้างยังเป็น global callable code ได้
+3. อัปโหลด source รุ่นใหม่เข้า Apps Script project เดิมให้ครบ 46 runtime files และเทียบ inventory สองทาง ไฟล์ `.gs/.html` เก่าที่ถูกถอดจาก repository ต้องผ่าน review แล้วนำออกจาก project ด้วย เพราะไฟล์ `.gs` ที่ค้างยังเป็น global callable code ได้
 4. อ่าน [MIGRATING.md](MIGRATING.md) แล้วรัน private editor function `setupSystem_()` เพื่อใช้ additive migrations
 5. ที่ **Deploy > Manage deployments** เลือก deployment production เดิม แล้วกด **Edit**
 6. ตรวจ **Execute as** เป็น **Me** (`USER_DEPLOYING`) และเปลี่ยน **Who has access** จาก **domain** เป็น **Anyone** (`ANYONE` สำหรับบัญชี Google ที่ลงชื่อเข้าใช้แล้ว); ต้องไม่ใช่ `ANYONE_ANONYMOUS`
@@ -440,6 +440,18 @@ Google เปลี่ยน quota ได้โดยไม่แจ้งล่
 - [Apps Script OAuth scopes](https://developers.google.com/apps-script/concepts/scopes)
 - [Apps Script logging and execution errors](https://developers.google.com/apps-script/guides/logging)
 - [Current Apps Script quotas and limits](https://developers.google.com/apps-script/guides/services/quotas)
+
+## Pilot user-management update (after v4)
+
+- Create has no `user_id` input and always invokes `adminCreateUser`. Backend rejects supplied IDs and allocates sequential `USR-000001` IDs from Sequences under ScriptLock; occupied IDs are skipped, exhausted sequences fail closed. Gaps after interruptions are safe.
+- Edit displays the original ID as text and stores a frozen record snapshot; it never reads target/version from FormData. `adminListUsers` issues a server-cached, one-hour `edit_proof` bound to Admin, record ID and row version. Update requires that proof; tampered IDs and absent/expired/evicted proofs fail closed. Reload the users list if it expires. Admin reconciliation obtains a new proof from the journaled target, not browser input.
+- Normalized email uniqueness includes blank-ID legacy rows. Duplicate nonempty IDs block updates. Domain, status, role and last-active-admin validation remain enabled. Keep `ALLOWED_DOMAINS=yru.ac.th,gmail.com` and `AUTO_PROVISION_USERS=false`.
+- Read-only legacy audit: authenticated Admin can run `await CRS.api.adminAuditLegacyUsers()` in the Pilot app frame console. It returns `candidates` with row, old ID, email, fingerprint, repairable flag and blockers. This does not change Users data. Use the CRS frame, not the outer Apps Script page; never paste/share session tokens.
+- Do NOT edit Sheet IDs manually. Back up data and establish the reference boundary first. The scanner covers all registered schema sheets, nested audit/operation JSON, ID/email references, duplicate IDs/emails and formulas. Unknown sheets, ambiguous blank IDs, invalid fields and any historical/reference match block repair. External spreadsheets, exports and third-party consumers cannot be discovered: if they exist or their absence cannot be established, do not execute repair; plan a reviewed migration instead.
+- Only after reviewing a repairable candidate and confirming data isolation from Production, Admin may call `await CRS.api.adminRepairLegacyUser({row: candidate.row, fingerprint: candidate.fingerprint, confirm: true, command_id: CRS.commandId()})`. Save the command ID first and retry the same input/command, or use Admin operation reconciliation after interruption. Never supply `user_id`. Backend rechecks under lock, journals the original row before allocation, writes one exact checked row and appends `REPAIR_USER_ID` audit without rewriting old History/Operations. Investigate stale fingerprints/reference conflicts; never bypass them. Blank IDs with audit records are conservatively blocked.
+- Deployments in one Apps Script project share Script Properties and may share the Sheet. Pilot-only code does NOT isolate data writes. No live repair is part of this rollout. Do not change shared properties or repair shared data as a side effect of testing.
+- Acceptance: edit/cancel an existing user then create an ACTIVE Gmail USER; verify CREATE_USER (not EDIT_USER), a generated ID and exactly one normalized email row. Verify YRU/Gmail login separately, inactive rejection and USER denial of all Admin RPCs. Use approved test records; automated mocks do not establish live acceptance.
+- Run `npm test`, back up HEAD, create an immutable version, download/compare all runtime files, update only the existing Pilot deployment, and confirm Production retains its original version. Updating an existing deployment preserves its `/exec` URL; no OAuth URI/property change is needed solely for a new version.
 
 ## Pilot callback confirmation update
 

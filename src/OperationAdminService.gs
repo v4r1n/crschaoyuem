@@ -132,9 +132,13 @@ function reconcileOperationForAdmin_(operationId, actor) {
   if (operation.action === 'EDIT_USER') {
     result = updateUser_(mergeObjects_(payload.user, {
       user_id: payload.userId,
+      edit_proof: issueUserEditProof_({ user_id: payload.userId, row_version: payload.expectedVersion }, actor),
       expected_version: payload.expectedVersion,
       command_id: commandId
     }), actor);
+  }
+  if (operation.action === 'REPAIR_USER_ID') {
+    result = repairLegacyUser_(mergeObjects_(payload, { command_id: commandId, confirm: true }), actor);
   }
   if (operation.action === 'CREATE_CATEGORY') {
     result = createCategory_(mergeObjects_(payload, { command_id: commandId }), actor);

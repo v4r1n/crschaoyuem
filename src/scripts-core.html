@@ -611,8 +611,6 @@
       event.preventDefault();
       CRS.navigate(routeLink.dataset.route, {});
     }
-    const retry = event.target.closest('[data-action="retry-bootstrap"]');
-    if (retry) bootstrapApplication();
     const signOut = event.target.closest('[data-action="sign-out"]');
     if (signOut && CRS.auth && typeof CRS.auth.signOut === 'function') CRS.auth.signOut();
   });

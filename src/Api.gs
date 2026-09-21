@@ -156,6 +156,18 @@ function adminListUsers(sessionToken, query) {
   });
 }
 
+function adminAuditLegacyUsers(sessionToken) {
+  return executeAdminRpc_(sessionToken, function (actor) {
+    return withAdminMutation_(actor, function () { return auditLegacyUsersLocked_(); });
+  });
+}
+
+function adminRepairLegacyUser(sessionToken, input) {
+  return executeAdminRpc_(sessionToken, function (actor) {
+    return repairLegacyUser_(input || {}, actor);
+  });
+}
+
 function adminCreateUser(sessionToken, input) {
   return executeAdminRpc_(sessionToken, function (actor) {
     return createUser_(input || {}, actor);

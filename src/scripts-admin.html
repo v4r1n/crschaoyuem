@@ -577,7 +577,12 @@
   function openUserForm(context, record) {
     var form = CRS.$('#form-admin-user', context.page);
     prepareForm(form);
-    context.editingUser = record || null;
+    context.editingUser = record ? Object.freeze(Object.assign({}, record)) : null;
+    context.userFormMode = record ? 'edit' : 'create';
+    delete form.dataset.createKey;
+    var idDisplay = form.querySelector('[data-user-id-display]');
+    idDisplay.hidden = !record;
+    idDisplay.textContent = record ? 'User ID: ' + record.user_id + ' (แก้ไขไม่ได้)' : '';
     CRS.setText(CRS.$('#admin-user-form-title', context.page), record ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้');
     var session = CRS.state.bootstrap.session;
     var editingSelf = Boolean(record && record.user_id === session.user_id);
@@ -585,8 +590,6 @@
     form.elements.email.title = editingSelf ?
       'ไม่สามารถเปลี่ยนอีเมลบัญชีที่กำลังใช้งานจากหน้าจอนี้ได้' : '';
     if (record) {
-      form.elements.user_id.value = record.user_id;
-      form.elements.expected_version.value = record.row_version;
       form.elements.email.value = text(record.email, '');
       form.elements.name.value = text(record.name, '');
       form.elements.department.value = text(record.department, '');
@@ -605,8 +608,15 @@
     form.classList.add('was-validated');
     if (!form.checkValidity()) return;
     var data = formData(form);
-    var userId = value(data.get('user_id'));
-    var version = Number(data.get('expected_version'));
+    var editing = context.userFormMode === 'edit';
+    if (context.userFormMode !== 'create' && !editing) return;
+    var original = context.editingUser;
+    var userId = editing && original ? original.user_id : '';
+    var version = editing && original ? Number(original.row_version) : 0;
+    if (editing && !/^USR-\d{6}$/.test(userId)) {
+      setFormError(form, { message: 'Legacy User ID: ต้องตรวจและ repair ข้อมูลก่อนแก้ไข' });
+      return;
+    }
     var payload = {
       email: value(data.get('email')).trim().toLowerCase(),
       name: value(data.get('name')).trim(),
@@ -614,10 +624,10 @@
       role: value(data.get('role')),
       status: value(data.get('status'))
     };
-    var editing = Boolean(userId);
     if (editing) {
       payload.user_id = userId;
       payload.expected_version = version;
+      payload.edit_proof = original.edit_proof;
     }
     if (editing && context.editingUser && context.editingUser.role === 'ADMIN' &&
       context.editingUser.status === 'ACTIVE' && (payload.role !== 'ADMIN' || payload.status !== 'ACTIVE')) {

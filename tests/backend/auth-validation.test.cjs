@@ -42,6 +42,7 @@ test('authentication and admin authorization are enforced by server endpoints', 
   harness.setActiveEmail('admin@example.com');
   expectError(harness.invoke('adminUpdateUser', {
     command_id: 'demote-last-admin',
+    edit_proof: expectOk(harness.invoke('adminListUsers', {})).items.find((row) => row.user_id === 'USR-000001').edit_proof,
     user_id: 'USR-000001',
     expected_version: 1,
     email: 'admin@example.com',

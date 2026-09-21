@@ -1,5 +1,36 @@
 const { test, expect } = require('@playwright/test');
 
+test('user modal routes create independently of stale or injected IDs and keeps edit target immutable', async ({ page }) => {
+  await openAuthenticated(page, '/?view=admin&role=admin', 'admin');
+  await page.locator('#admin-users-tab').click();
+  await page.locator('[data-action="edit-admin-user"]').first().click();
+  const form = page.locator('#form-admin-user');
+  await expect(form).toBeVisible();
+  await expect(form.locator('[name="user_id"]')).toHaveCount(0);
+  await page.evaluate(() => {
+    const input = document.createElement('input');
+    input.type = 'hidden'; input.name = 'user_id'; input.value = 'USR-999999';
+    document.querySelector('#form-admin-user').append(input);
+  });
+  await form.locator('[name="name"]').fill('Edited user');
+  await form.locator('[type="submit"]').click();
+  await expect(form).toBeHidden();
+  await page.locator('[data-action="add-user"]').click();
+  await expect(form.locator('[data-user-id-display]')).toBeHidden();
+  await form.locator('[name="email"]').fill('new@gmail.com');
+  await form.locator('[name="name"]').fill('New Gmail user');
+  await form.locator('[type="submit"]').click();
+  await expect(form).toBeHidden();
+  const calls = await page.evaluate(() => window.__CRS_TEST__.calls.filter(call =>
+    ['adminCreateUser', 'adminUpdateUser'].includes(call.method)));
+  expect(calls.map(call => call.method)).toEqual(['adminUpdateUser', 'adminCreateUser']);
+  const update = calls[0].args.find(arg => arg && typeof arg === 'object' && arg.command_id);
+  const create = calls[1].args.find(arg => arg && typeof arg === 'object' && arg.command_id);
+  expect(update.user_id).toBe('USR-000001');
+  expect(create).not.toHaveProperty('user_id');
+  expect(create.email).toBe('new@gmail.com');
+});
+
 const ROUTE_SELECTORS = {
   dashboard: '#page-dashboard',
   equipment: '#page-equipment',
@@ -71,12 +102,12 @@ test('bootstrap fails closed and keeps the admin route role-gated', async ({ pag
   await expect(page.locator('#access-state')).toBeVisible();
   await expect(page.locator('[data-access-title]')).toContainText('บัญชี');
   await expect(page.locator('[data-access-message]')).toContainText('ปิดใช้งาน');
+  await expect(page.locator('#access-state button:visible')).toHaveCount(1);
+  await expect(page.locator('#google-signin-button')).toHaveText(/ลงชื่อเข้าใช้ด้วย Google/);
+  await expect(page.locator('[data-action="retry-bootstrap"]')).toHaveCount(0);
 
   const bootstrapCallCount = () => page.evaluate(() =>
     window.__CRS_TEST__.calls.filter((call) => call.method === 'getAppBootstrap').length);
-  expect(await bootstrapCallCount()).toBe(1);
-  await page.locator('[data-action="retry-bootstrap"]').click();
-  await page.waitForTimeout(150);
   expect(await bootstrapCallCount()).toBe(1);
   await page.locator('#google-signin-button').click();
   await confirmOAuth(page);

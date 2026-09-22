@@ -15,4 +15,4 @@
 
 ## Live check
 
-Open the existing Pilot `/exec` URL in a fresh signed-in browser session. Confirm the access card initially shows only “ลงชื่อเข้าใช้ด้วย Google”; the OAuth confirmation control appears only after a callback is awaiting its one-time confirmation. Complete one YRU and one approved Gmail login before any Production promotion.
+Open the existing Pilot `/exec` URL in a fresh signed-in browser session. Confirm the access card initially shows only “ลงชื่อเข้าใช้ด้วย Google”; the six-field OTP control appears only after a callback is awaiting confirmation. Verify callback Copy, single-paste distribution, five-minute expiry, five-failure lockout, and replay rejection. Complete one YRU and one approved Gmail login before any Production promotion.

@@ -91,5 +91,5 @@ function normalizePublicAssetId_(value) {
 
 function getPublicAppTitle_() {
   var configuredTitle = String(getRuntimeConfig_().APP_NAME || '').trim();
-  return configuredTitle || 'ระบบยืม–คืนอุปกรณ์';
+  return configuredTitle || 'CRS Yuem-Kuen System';
 }

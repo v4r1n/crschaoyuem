@@ -51,23 +51,114 @@
     if (label) label.textContent = busy ? 'กำลังเชื่อมต่อกับ Google…' : 'ลงชื่อเข้าใช้ด้วย Google';
   }
 
+  function otpInputs() {
+    return Array.prototype.slice.call(document.querySelectorAll('[data-otp-digit]'));
+  }
+
+  function readOtp() {
+    return otpInputs().map(function (input) { return input.value; }).join('');
+  }
+
+  function setOtpError(message) {
+    const error = document.querySelector('#oauth-handoff-error');
+    if (!error) return;
+    error.textContent = String(message || '');
+    error.hidden = !error.textContent;
+  }
+
+  function updateOtpSubmit() {
+    const submit = document.querySelector('#oauth-handoff-submit');
+    if (submit) submit.disabled = !/^\d{6}$/.test(readOtp());
+  }
+
+  function clearOtpInputs(focusFirst) {
+    const inputs = otpInputs();
+    inputs.forEach(function (input) {
+      input.value = '';
+      input.setCustomValidity('');
+    });
+    setOtpError('');
+    updateOtpSubmit();
+    if (focusFirst && inputs[0]) inputs[0].focus();
+  }
+
+  function distributeOtp(text, focusLast) {
+    const digits = String(text || '').replace(/\D/g, '').slice(0, 6);
+    const inputs = otpInputs();
+    inputs.forEach(function (input, index) { input.value = digits.charAt(index) || ''; });
+    setOtpError('');
+    updateOtpSubmit();
+    if (inputs.length) {
+      const focusIndex = focusLast && digits.length === 6
+        ? 5
+        : Math.min(digits.length, 5);
+      inputs[focusIndex].focus();
+    }
+  }
+
+  function initializeOtpInputs() {
+    const inputs = otpInputs();
+    inputs.forEach(function (input, index) {
+      input.addEventListener('input', function () {
+        const digits = input.value.replace(/\D/g, '');
+        if (digits.length > 1) {
+          distributeOtp(digits, true);
+          return;
+        }
+        input.value = digits;
+        setOtpError('');
+        updateOtpSubmit();
+        if (digits && inputs[index + 1]) inputs[index + 1].focus();
+      });
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && /^\d{6}$/.test(readOtp())) {
+          event.preventDefault();
+          document.querySelector('#oauth-handoff-submit').click();
+        } else if (event.key === 'Backspace' && !input.value && inputs[index - 1]) {
+          event.preventDefault();
+          inputs[index - 1].value = '';
+          inputs[index - 1].focus();
+          updateOtpSubmit();
+        } else if (event.key === 'ArrowLeft' && inputs[index - 1]) {
+          event.preventDefault();
+          inputs[index - 1].focus();
+        } else if (event.key === 'ArrowRight' && inputs[index + 1]) {
+          event.preventDefault();
+          inputs[index + 1].focus();
+        }
+      });
+      input.addEventListener('paste', function (event) {
+        const pasted = event.clipboardData && event.clipboardData.getData('text');
+        if (!/^\s*\d{6}\s*$/.test(String(pasted || ''))) return;
+        event.preventDefault();
+        distributeOtp(pasted, true);
+      });
+    });
+  }
+
   function initializeServerOAuth() {
     if (authState.initialized) return;
     const button = document.querySelector('#google-signin-button');
     if (!button) return;
+    initializeOtpInputs();
     button.addEventListener('click', startOAuthSignIn);
     document.querySelector('#oauth-handoff-submit').addEventListener('click', function () {
       if (!authState.attempt) return;
-      const input = document.querySelector('#oauth-handoff-input');
-      const code = input.value.trim();
-      if (!/^confirm1_[A-Za-z0-9_-]{43}$/.test(code)) {
-        input.setCustomValidity('กรุณาวางรหัสยืนยันให้ครบถ้วน');
-        input.reportValidity();
+      const inputs = otpInputs();
+      const code = readOtp();
+      if (!/^\d{6}$/.test(code)) {
+        setOtpError('กรุณากรอกรหัสตัวเลขให้ครบ 6 หลัก');
+        if (inputs[0]) {
+          inputs[0].setCustomValidity('กรุณากรอกรหัสตัวเลขให้ครบ 6 หลัก');
+          inputs[0].reportValidity();
+          inputs[0].focus();
+        }
         return;
       }
-      input.setCustomValidity('');
+      inputs.forEach(function (input) { input.setCustomValidity(''); });
+      setOtpError('');
       authState.attempt.handoffCode = code;
-      input.value = '';
+      clearOtpInputs(false);
     });
     authState.initialized = true;
   }
@@ -224,11 +315,26 @@
       }
       const handoff = attempt.handoffCode || '';
       attempt.handoffCode = '';
-      const result = await serverRpc('completeOAuthSignIn',
-        [attempt.flowId, attempt.pollToken, handoff, handoff ? attempt.sessionToken : '']);
+      let result;
+      try {
+        result = await serverRpc('completeOAuthSignIn',
+          [attempt.flowId, attempt.pollToken, handoff, handoff ? attempt.sessionToken : '']);
+      } catch (error) {
+        if (handoff && error instanceof ClientApiError && error.code === 'OTP_INVALID') {
+          setOtpError(error.message || 'รหัสยืนยันไม่ถูกต้อง กรุณาลองอีกครั้ง');
+          const firstOtpInput = otpInputs()[0];
+          if (firstOtpInput) firstOtpInput.focus();
+          await delay(250);
+          continue;
+        }
+        throw error;
+      }
       if (result && result.status === 'AWAITING_CONFIRMATION') {
         const panel = document.querySelector('#oauth-handoff-panel');
-        if (panel) panel.hidden = false;
+        if (panel && panel.hidden) {
+          panel.hidden = false;
+          clearOtpInputs(true);
+        }
         await delay(750);
         continue;
       }
@@ -275,7 +381,7 @@
     };
     authState.attempt = attempt;
     document.querySelector('#oauth-handoff-panel').hidden = true;
-    document.querySelector('#oauth-handoff-input').value = '';
+    clearOtpInputs(false);
     setSignInBusy(true);
 
     try {
@@ -321,6 +427,7 @@
       if (authState.attempt === attempt && generation === authState.generation) {
         authState.attempt = null;
         document.querySelector('#oauth-handoff-panel').hidden = true;
+        clearOtpInputs(false);
         setSignInBusy(false);
       }
       try { if (!popup.closed) popup.close(); }

@@ -1,4 +1,4 @@
-# Project Memory
+# CRS Yuem-Kuen System Project Memory
 
 Last updated: 2026-09-04
 
@@ -88,7 +88,7 @@ Last updated: 2026-09-04
 ## Phase 7 verification
 
 - The server-side OAuth redesign passed all 48 automated tests on 2026-09-05: eleven source/security/deployment contracts, twenty-eight backend tests, and nine Playwright browser acceptance tests. Live callback/channel-binding acceptance remains unsigned.
-- Traced the deployment procedure against all 45 runtime source files, all 11 managed Sheet schemas, all Script Property names and numeric constraints, first-admin bootstrap rules, image-sharing modes, setup/migration behavior, server-side OAuth/OIDC configuration, and canonical `/exec` QR URL validation.
+- Traced the deployment procedure against all 46 runtime source files, all 11 managed Sheet schemas, all Script Property names and numeric constraints, first-admin bootstrap rules, image-sharing modes, setup/migration behavior, server-side OAuth/OIDC configuration, and canonical `/exec` QR URL validation.
 - Production topology remains an organization-controlled deployer with `USER_DEPLOYING`, private Sheet/Drive ACLs, and a stable versioned `/exec`; Web app access is `ANYONE` for logged-in Google Accounts and explicitly never `ANYONE_ANONYMOUS`.
 - Google authorization runs through Apps Script `/usercallback`: StateTokenBuilder state, OIDC nonce, PKCE S256, one-time ScriptCache records, server-side code exchange, and strict RS256/PKCS#1 ID-token verification precede Users authorization. Business RPCs receive only an opaque application session and re-read exactly one Active Users row/current role; unknown rows never auto-provision.
 - Automated coverage includes `@yru.ac.th`, `@gmail.com`, allowlist fallback, callback/state/nonce/PKCE/replay failures, malformed/bad-signature/wrong-key/wrong-audience/wrong-issuer/expired/unverified/wrong-hosted-domain tokens, session absence/expiry/isolation/logout, JWKS hardening, unknown/inactive users, and privilege escalation.
@@ -100,4 +100,4 @@ Last updated: 2026-09-04
 
 ## Current pilot architecture update
 
-The /usercallback design above is historical and superseded by ADR-019. New code uses GOOGLE_OAUTH_REDIRECT_URI for exact Pilot /exec callback, opaque server-side state, and a manual one-time callback confirmation code. No callback temporary-key match is required. Callback stores a candidate only; completeOAuthSignIn requires handoff + poll + session proofs before activation. Live deployment/configuration and acceptance must be recorded separately from local test results.
+The /usercallback design above is historical and superseded by ADR-019/ADR-020. New code uses GOOGLE_OAUTH_REDIRECT_URI for exact Pilot /exec callback, opaque server-side state, and a manual six-digit one-time callback OTP. The OTP is stored only as a flow-bound keyed hash, expires after five minutes, locks after five failures, and is consumed on success. No callback temporary-key match is required. Callback stores a candidate only; completeOAuthSignIn requires OTP + poll + session proofs before activation. Live deployment/configuration and acceptance must be recorded separately from local test results.

@@ -1,6 +1,6 @@
 # คู่มือติดตั้ง Deploy และส่งมอบระบบ
 
-คู่มือนี้ใช้สำหรับนำ CRS Equipment Borrowing System รุ่น `0.2.0` ไปติดตั้งบน Google Workspace จริง ตั้งแต่สร้างทรัพยากรจนถึงตรวจรับ Workspace/Gmail User/Admin และดูแลหลังเปิดใช้งาน ขั้นตอนทั้งหมดใช้บริการของ Google และไม่ต้องมี VPS หรือฐานข้อมูลแยก
+คู่มือนี้ใช้สำหรับนำ CRS Yuem-Kuen System รุ่น `0.2.0` ไปติดตั้งบน Google Workspace จริง ตั้งแต่สร้างทรัพยากรจนถึงตรวจรับ Workspace/Gmail User/Admin และดูแลหลังเปิดใช้งาน ขั้นตอนทั้งหมดใช้บริการของ Google และไม่ต้องมี VPS หรือฐานข้อมูลแยก
 
 > สถานะของ repository เป็น source ที่ผ่านการทดสอบในเครื่อง ไม่ใช่หลักฐานว่าระบบถูก deploy ในโดเมนขององค์กรแล้ว ผู้รับผิดชอบ deployment ต้องทำรายการใน [Deployment Acceptance Matrix](../tests/MANUAL_ACCEPTANCE.md) ให้ผ่านก่อนเปิดใช้งานจริง
 
@@ -35,7 +35,7 @@
 ## 1. สร้าง Google Sheet
 
 1. ลงชื่อเข้าใช้ด้วยบัญชี Workspace ที่จะเป็นผู้ deploy
-2. สร้าง Google Sheet เปล่า เช่น `CRS Equipment - Production`
+2. สร้าง Google Sheet เปล่า เช่น `CRS Yuem-Kuen System`
 3. ไม่ต้องสร้าง tab หรือ header เอง `setupSystem_()` จะสร้างและตรวจ schema ให้ทั้งหมด
 4. เปิด URL ของ Sheet แล้วคัดลอกข้อความระหว่าง `/d/` และ `/edit` เก็บเป็น `SPREADSHEET_ID`
 5. จำกัด Share ของ Sheet ไว้เฉพาะบัญชีผู้ deploy และผู้ดูแลข้อมูลที่จำเป็น ผู้ใช้ระบบทั่วไปต้องไม่มีสิทธิ์ตรงทุกระดับ รวม Viewer/Commenter และสิทธิ์ที่ได้ผ่าน group/link
@@ -49,9 +49,8 @@ https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit
 ระบบสร้าง/ดูแล 11 tabs ต่อไปนี้: `Equipment`, `Users`, `Borrow`, `Categories`, `IncludedItems`, `BorrowItems`, `History`, `Operations`, `Settings`, `Sequences` และ `SchemaMigrations` โดยไม่ลบ tab อื่น เช่น `Sheet1` หากต้องการลบ tab เริ่มต้นให้ยืนยันก่อนว่าไม่มีข้อมูลและไม่ใช่หนึ่งใน 11 ชื่อที่ระบบดูแล
 
 ## 2. เปิด Apps Script
-x
 1. ไปที่ [script.google.com](https://script.google.com/) แล้วเลือก **New project** เพื่อสร้าง standalone project
-2. ตั้งชื่อ เช่น `CRS Equipment Borrowing - Production`
+2. ตั้งชื่อ Apps Script project เป็น `CRS Yuem-Kuen System`
 3. เปิด **Project Settings** แล้วตรวจ Time zone เป็น `(GMT+07:00) Bangkok`
 4. เปิดตัวเลือก **Show "appsscript.json" manifest file in editor**
 5. บันทึก Script ID และเจ้าของ project ไว้ใน change record ขององค์กร โดยไม่ใส่ค่าจริงลง Git
@@ -147,7 +146,7 @@ Script Properties เป็นค่าร่วมของทั้ง web app
 
 ## 5. ตั้ง Drive Folder
 
-1. สร้าง folder ใน Google Drive ด้วยบัญชีผู้ deploy เช่น `CRS Equipment Images - Production`
+1. สร้าง folder ใน Google Drive ด้วยบัญชีผู้ deploy เช่น `CRS Yuem-Kuen Images`
 2. คัดลอก ID หลัง `/folders/` จาก URL ของ folder เช่น `https://drive.google.com/drive/folders/{DRIVE_FOLDER_ID}`
 3. เพิ่ม Script Property `DRIVE_FOLDER_ID` ด้วย ID นี้
 4. เลือก `IMAGE_SHARING` ตามการจัดชั้นข้อมูลและกลุ่มผู้ใช้จริง; external Gmail ต้องใช้ `ANYONE_WITH_LINK` จึงจะเปิดไฟล์จาก Drive URL ได้
@@ -211,7 +210,8 @@ Schema v3 ยังคงใช้ verified email เป็น authorization key
 | Property | ค่าที่แนะนำ | ความหมาย |
 |---|---:|---|
 | `AUTO_PROVISION_USERS` | `false` | บังคับ: ผู้ใช้ต้องถูกเพิ่มโดย Admin ก่อน; identity path ไม่ auto-provision |
-| `APP_NAME` | ชื่อระบบขององค์กร | ชื่อบน title/navigation |
+| `APP_NAME` | `CRS Yuem-Kuen System` | ชื่อเต็มบน browser/page title และ metadata ของแอป |
+| `APP_SHORT_NAME` | `CRS Yuem-Kuen` | ชื่อสั้นบน navigation, login และส่วน branding ที่พื้นที่จำกัด |
 | `TIMEZONE` | `Asia/Bangkok` | timezone ธุรกิจ |
 | `LOCALE` | `th_TH` | locale ของ Sheet |
 | `MAX_IMAGE_BYTES` | `4194304` | รูปสูงสุด 4 MiB; ช่วงที่รองรับ 1,024–10,485,760 bytes |
@@ -457,7 +457,7 @@ Google เปลี่ยน quota ได้โดยไม่แจ้งล่
 
 Visitor OAuth returns to the exact Pilot `/exec` URL configured in `GOOGLE_OAUTH_REDIRECT_URI` (Script Properties) and the OAuth Web application's Authorized redirect URIs. Do not use `/usercallback`, StateTokenBuilder, wildcard origins, or the production URL. `doGet` routes any code/error/state request to a private callback implementation; malformed/duplicate/replayed/expired state fails closed.
 
-Callback verifies Google identity but only stores a pending candidate, NOT an active session. It displays a one-time high-entropy confirmation code in minimal HTML without external assets. The user copies it to the original CRS tab. Confirmation requires that code plus the browser-held poll AND session proofs; polling alone never activates a session or returns the confirmation code. State and confirmation are bound to one flow and expire. Users/ACTIVE/Role are checked again at activation and on every business RPC. Copying the code to an attacker would authorize that attacker's flow: the UI explicitly warns never to share codes or complete login links sent by someone else.
+Callback verifies Google identity but only stores a pending candidate, NOT an active session. It displays a six-digit numeric OTP generated from a server-keyed HMAC CSPRNG. The server stores only a flow-bound OTP HMAC, never the plaintext code; the OTP expires after five minutes, permits at most five failed submissions, is consumed immediately on success, and cannot be replayed. Confirmation still requires the OTP plus the original browser-held poll AND session proofs. Users/ACTIVE/Role are checked again at activation and on every business RPC. Never share an OTP or complete a sign-in flow started by someone else.
 
 The callback does NOT read or compare `getTemporaryActiveUserKey()`. Its context may differ from the original RPC context. The existing temporary-key check remains only between begin/complete/business RPCs as additional defense; it is not relied on to stop attacker-started/victim-redeemed callbacks. No Google/session token appears in URLs. Raw callback state is hashed in cache; nonce/PKCE verifier are transient server-only cache data. Random server values use a domain-separated HMAC-SHA256 PRF keyed by the confidential OAuth client secret with UUID/time uniqueness input; protect/rotate that secret and never log it.
 

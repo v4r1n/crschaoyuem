@@ -3,7 +3,8 @@
  * Script Properties with the same names override these values.
  */
 var CONFIG = Object.freeze({
-  APP_NAME: 'CRS Equipment Borrowing System',
+  APP_NAME: 'CRS Yuem-Kuen System',
+  APP_SHORT_NAME: 'CRS Yuem-Kuen',
   APP_VERSION: '0.2.0',
   SPREADSHEET_ID: '',
   DRIVE_FOLDER_ID: '',
@@ -37,6 +38,7 @@ function getRuntimeConfig_() {
   );
   return {
     APP_NAME: valueOrDefault_(properties.APP_NAME, CONFIG.APP_NAME),
+    APP_SHORT_NAME: valueOrDefault_(properties.APP_SHORT_NAME, CONFIG.APP_SHORT_NAME),
     APP_VERSION: valueOrDefault_(properties.APP_VERSION, CONFIG.APP_VERSION),
     SPREADSHEET_ID: valueOrDefault_(properties.SPREADSHEET_ID, CONFIG.SPREADSHEET_ID),
     DRIVE_FOLDER_ID: valueOrDefault_(properties.DRIVE_FOLDER_ID, CONFIG.DRIVE_FOLDER_ID),

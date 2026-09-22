@@ -16,6 +16,7 @@ function getAppBootstrap(sessionToken) {
     return {
       app: {
         name: config.APP_NAME,
+        shortName: config.APP_SHORT_NAME,
         version: config.APP_VERSION,
         timezone: config.TIMEZONE,
         locale: config.LOCALE,

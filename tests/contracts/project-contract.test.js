@@ -70,6 +70,42 @@ test('all server, browser, and manifest sources compile', () => {
   assert.equal(browserFiles.length, 9);
 });
 
+test('theme boot is flash-safe and component colors are centralized as design tokens', () => {
+  const index = read('src/index.html');
+  const bootPosition = index.indexOf("localStorage.getItem('crs-theme')");
+  const stylesheetPosition = index.indexOf('bootstrap.min.css');
+  assert.ok(bootPosition > 0 && bootPosition < stylesheetPosition,
+    'theme preference must be applied before stylesheets can render');
+  assert.match(index, /stored === 'light' \|\| stored === 'dark' \|\| stored === 'system'/);
+  assert.match(index, /prefers-color-scheme: dark/);
+  assert.match(index, /data-action="theme-toggle"/);
+  assert.match(index, /aria-label=/);
+
+  const controller = read('src/scripts-core.html');
+  assert.match(controller, /const THEME_ORDER = \['system', 'light', 'dark'\]/);
+  assert.match(controller, /localStorage\.setItem\(THEME_STORAGE_KEY, selected\)/);
+  assert.match(controller, /addEventListener\('change', followSystemTheme\)/);
+
+  const styles = read('src/styles.html');
+  assert.match(styles, /\[data-bs-theme="dark"\]\s*\{/);
+  assert.match(styles, /\.theme-toggle\s*\{/);
+  for (const token of ['heading', 'label', 'link', 'muted', 'danger', 'warning', 'success', 'info']) {
+    assert.match(styles, new RegExp(`--crs-${token}:`), `${token} color must be a design token`);
+  }
+  assert.match(styles, /\.text-body-secondary/);
+  assert.match(styles, /\.btn-outline-secondary/);
+  assert.match(styles, /\.alert-secondary/);
+  assert.match(styles, /--crs-auth-guidance:\s*#f3f7fb/);
+  assert.match(styles, /--crs-auth-label:\s*#ffffff/);
+  assert.match(index, /class="oauth-handoff-guidance"/);
+  assert.match(index, /class="oauth-handoff-label"/);
+  const firstComponentRule = styles.search(/^  \*,\r?$/m);
+  assert.ok(firstComponentRule > 0, 'component rule boundary must remain discoverable');
+  const componentRules = styles.slice(firstComponentRule);
+  assert.doesNotMatch(componentRules, /#[\da-f]{3,8}|rgba?\(/i,
+    'component rules must consume design tokens instead of declaring colors inline');
+});
+
 test('deployment runbook covers every runtime file, config key, and requested step', () => {
   const guide = read('docs/DEPLOYMENT.md');
   const runtimeFiles = fs.readdirSync(SRC)
@@ -415,6 +451,30 @@ test('login access card exposes only Google sign-in and has no retry handler', (
   assert.doesNotMatch(core, /retry-bootstrap/);
 });
 
+test('canonical CRS Yuem-Kuen branding is consistent across runtime and manifests', () => {
+  const config = read('src/Config.gs');
+  const api = read('src/Api.gs');
+  const index = read('src/index.html');
+  const admin = read('src/admin.html');
+  const qr = read('src/scripts-qr.html');
+  const packageManifest = JSON.parse(read('package.json'));
+  const packageLock = JSON.parse(read('package-lock.json'));
+  const brandingSurface = [config, api, index, admin, qr, read('README.md'),
+    read('docs/DEPLOYMENT.md')].join('\n');
+
+  assert.match(config, /APP_NAME:\s*'CRS Yuem-Kuen System'/);
+  assert.match(config, /APP_SHORT_NAME:\s*'CRS Yuem-Kuen'/);
+  assert.match(api, /shortName:\s*config\.APP_SHORT_NAME/);
+  assert.match(index, /data-app-short-name>CRS Yuem-Kuen</);
+  assert.match(index, /data-app-name>CRS Yuem-Kuen System</);
+  assert.match(admin, /CRS Yuem-Kuen System/);
+  assert.match(qr, /fillText\('CRS Yuem-Kuen'/);
+  assert.equal(packageManifest.name, 'crs-yuem-kuen-system');
+  assert.equal(packageLock.name, 'crs-yuem-kuen-system');
+  assert.doesNotMatch(brandingSurface,
+    /CRS (?:Equipment Borrowing System|Equipment|Chao-Yuem|Yuam-Kuen)|Equipment Center/);
+});
+
 test('server-side OAuth/OIDC uses a protected callback and memory-only application session', () => {
   const index = read('src/index.html');
   const api = read('src/scripts-api.html');
@@ -447,6 +507,17 @@ test('server-side OAuth/OIDC uses a protected callback and memory-only applicati
   assert.doesNotMatch(oauth, /newStateToken|withMethod|usercallback/);
   assert.match(oauth, /GOOGLE_OAUTH_REDIRECT_URI/);
   assert.match(oauth, /computeHmacSha256Signature/);
+  assert.match(oauth, /OAUTH_OTP_PATTERN_\s*=\s*\/\^\\d\{6\}\$\//);
+  assert.match(oauth, /OAUTH_OTP_TTL_SECONDS_\s*=\s*300/);
+  assert.match(oauth, /OAUTH_OTP_MAX_ATTEMPTS_\s*=\s*5/);
+  assert.match(oauth, /function hashOAuthOtp_/);
+  assert.doesNotMatch(oauth, /Math\.random\s*\(/,
+    'OAuth OTP and flow secrets must never use Math.random');
+  assert.doesNotMatch(authoredRuntime, /confirm1_[A-Za-z0-9_-]*/,
+    'legacy long confirmation codes must not remain in runtime source');
+  assert.equal((index.match(/data-otp-digit/g) || []).length, 6);
+  assert.match(index, /inputmode="numeric"/);
+  assert.match(api, /ClipboardEvent|clipboardData/);
   assert.match(read('src/Code.gs'), /return googleOAuthCallback_\(event\)/);
   assert.match(oauth, /response_type:\s*['"]code['"]/);
   assert.match(oauth, /code_challenge_method:\s*['"]S256['"]/);

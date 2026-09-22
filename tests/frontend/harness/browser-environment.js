@@ -198,7 +198,8 @@
   function bootstrapData() {
     return {
       app: {
-        name: 'CRS Equipment Center',
+        name: 'CRS Yuem-Kuen System',
+        shortName: 'CRS Yuem-Kuen',
         version: '1.0.0-test',
         timezone: 'Asia/Bangkok',
         locale: 'th-TH',
@@ -523,9 +524,10 @@
       return authErrorEnvelope('FORBIDDEN', 'Google authorization was denied');
     }
     if (!rawArgs[2]) return authEnvelope({status:'AWAITING_CONFIRMATION'});
-    if (rawArgs[2] !== 'confirm1_' + 'c'.repeat(43) ||
-      await sha256Base64Url(String(rawArgs[3] || '')) !== flow.sessionTokenHash)
+    if (await sha256Base64Url(String(rawArgs[3] || '')) !== flow.sessionTokenHash)
       return authErrorEnvelope('UNAUTHENTICATED','Wrong confirmation proof');
+    if (rawArgs[2] !== '123456')
+      return authErrorEnvelope('OTP_INVALID','Wrong confirmation code');
     flow.completed = true;
     activeSessionHashes[flow.sessionTokenHash] = {
       flowId: flowId,

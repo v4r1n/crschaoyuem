@@ -8,6 +8,9 @@ var OAUTH_POLL_TOKEN_PATTERN_ = /^poll1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_SESSION_TOKEN_PATTERN_ = /^session1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_NONCE_PATTERN_ = /^nonce1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_PKCE_VERIFIER_PATTERN_ = /^pkce1_[A-Za-z0-9_-]{43}$/;
+var OAUTH_OTP_PATTERN_ = /^\d{6}$/;
+var OAUTH_OTP_TTL_SECONDS_ = 300;
+var OAUTH_OTP_MAX_ATTEMPTS_ = 5;
 
 /**
  * Starts an OAuth authorization attempt without exposing protected data.
@@ -108,12 +111,36 @@ function completeOAuthSignIn(flowId, pollToken, handoffCode, sessionToken) {
       }
 
       if (flow.status === 'AWAITING_CONFIRMATION') {
+        var nowSeconds = Math.floor(Date.now() / 1000);
+        if (flow.otpExpiresAt <= nowSeconds) {
+          consumeOAuthConfirmation_(flow);
+          putOAuthCacheJson_(cache, flowCacheKey, flow,
+            Math.max(1, flow.expiresAt - nowSeconds));
+          throw new AppError_('UNAUTHENTICATED',
+            'รหัสยืนยันหมดอายุแล้ว กรุณาเริ่มลงชื่อเข้าใช้ใหม่', null, false);
+        }
         // Polling never discloses the callback proof or activates a session.
-        if (!handoffCode) return { status: 'AWAITING_CONFIRMATION', expiresAt: flow.expiresAt };
-        assertApp_(/^confirm1_[A-Za-z0-9_-]{43}$/.test(String(handoffCode)) &&
-          secureStringEquals_(flow.handoffHash, sha256Base64Url_(handoffCode)) &&
-          secureStringEquals_(flow.sessionTokenHash, sha256Base64Url_(requireOAuthSessionToken_(sessionToken))),
-        'UNAUTHENTICATED', 'รหัสยืนยันไม่ถูกต้อง กรุณาตรวจรหัสจากหน้าต่าง Google', null, false);
+        if (!handoffCode) return { status: 'AWAITING_CONFIRMATION', expiresAt: flow.otpExpiresAt };
+        var normalizedSessionToken = requireOAuthSessionToken_(sessionToken);
+        assertApp_(secureStringEquals_(flow.sessionTokenHash, sha256Base64Url_(normalizedSessionToken)),
+          'UNAUTHENTICATED', 'ไม่สามารถยืนยันคำขอลงชื่อเข้าใช้นี้ได้', null, false);
+        var normalizedOtp = String(handoffCode || '').trim();
+        var validOtp = OAUTH_OTP_PATTERN_.test(normalizedOtp) &&
+          secureStringEquals_(flow.otpHash, hashOAuthOtp_(flowCacheKey, flow, normalizedOtp));
+        if (!validOtp) {
+          flow.otpFailedAttempts += 1;
+          var attemptsExhausted = flow.otpFailedAttempts >= OAUTH_OTP_MAX_ATTEMPTS_;
+          if (attemptsExhausted) {
+            consumeOAuthConfirmation_(flow);
+          }
+          putOAuthCacheJson_(cache, flowCacheKey, flow,
+            Math.max(1, flow.expiresAt - nowSeconds));
+          throw new AppError_(attemptsExhausted ? 'UNAUTHENTICATED' : 'OTP_INVALID',
+            attemptsExhausted
+              ? 'กรอกรหัสไม่ถูกต้องเกินจำนวนที่กำหนด กรุณาเริ่มลงชื่อเข้าใช้ใหม่'
+              : 'รหัสยืนยันไม่ถูกต้อง กรุณาตรวจรหัสจากหน้าต่าง Google',
+            null, false);
+        }
         var user = requireUserForIdentity_({ email: flow.candidate.email });
         assertApp_(getRuntimeConfig_().ALLOWED_DOMAINS.indexOf(flow.candidate.email.split('@')[1]) !== -1,
           'FORBIDDEN', 'บัญชีนี้อยู่นอกโดเมนที่องค์กรอนุญาต', null, false);
@@ -124,11 +151,9 @@ function completeOAuthSignIn(flowId, pollToken, handoffCode, sessionToken) {
         // Consume before activation. A cache failure can require a fresh login,
         // but must not permit the callback confirmation to activate twice.
         var candidate = flow.candidate;
-        flow.status = 'CONSUMED';
-        delete flow.candidate;
-        delete flow.handoffHash;
+        consumeOAuthConfirmation_(flow);
         putOAuthCacheJson_(cache, flowCacheKey, flow,
-          Math.max(1, flow.expiresAt - Math.floor(Date.now() / 1000)));
+          Math.max(1, flow.expiresAt - nowSeconds));
         putOAuthCacheJson_(cache, oauthSessionCacheKeyFromHash_(flow.sessionTokenHash), candidate,
           candidate.expiresAt - Math.floor(Date.now() / 1000));
         return { status: 'COMPLETE', expiresAt: candidate.expiresAt };
@@ -147,6 +172,14 @@ function completeOAuthSignIn(flowId, pollToken, handoffCode, sessionToken) {
       );
     });
   });
+}
+
+function consumeOAuthConfirmation_(flow) {
+  flow.status = 'CONSUMED';
+  delete flow.candidate;
+  delete flow.otpHash;
+  delete flow.otpExpiresAt;
+  delete flow.otpFailedAttempts;
 }
 
 function logoutSession(sessionToken) {
@@ -352,10 +385,12 @@ function finalizeOAuthFlowSuccess_(claim, identity, user) {
       issuedAt: nowSeconds,
       expiresAt: sessionExpiresAt
     };
-    var handoffCode = createOAuthRandomValue_('confirm1_');
+    var handoffCode = createOAuthOtp_();
     flow.status = 'AWAITING_CONFIRMATION';
     flow.candidate = sessionRecord;
-    flow.handoffHash = sha256Base64Url_(handoffCode);
+    flow.otpHash = hashOAuthOtp_(claim.flowCacheKey, flow, handoffCode);
+    flow.otpExpiresAt = Math.min(flow.expiresAt, nowSeconds + OAUTH_OTP_TTL_SECONDS_);
+    flow.otpFailedAttempts = 0;
     flow.sessionExpiresAt = sessionExpiresAt;
     delete flow.claimId;
     putOAuthCacheJson_(cache, claim.flowCacheKey, flow,
@@ -457,7 +492,12 @@ function readOAuthFlowRecord_(cache, key) {
   if (record.status === 'PROCESSING' &&
     !/^claim1_[A-Za-z0-9_-]{43}$/.test(String(record.claimId || ''))) return null;
   if (record.status === 'AWAITING_CONFIRMATION' &&
-    (!Number.isInteger(record.sessionExpiresAt) || record.sessionExpiresAt <= record.createdAt)) return null;
+    (!Number.isInteger(record.sessionExpiresAt) || record.sessionExpiresAt <= record.createdAt ||
+      !OAUTH_SECRET_HASH_PATTERN_.test(String(record.otpHash || '')) ||
+      !Number.isInteger(record.otpExpiresAt) || record.otpExpiresAt <= record.createdAt ||
+      record.otpExpiresAt > record.expiresAt ||
+      !Number.isInteger(record.otpFailedAttempts) || record.otpFailedAttempts < 0 ||
+      record.otpFailedAttempts >= OAUTH_OTP_MAX_ATTEMPTS_)) return null;
   if (record.status === 'DENIED' &&
     (!record.error || typeof record.error !== 'object' || Array.isArray(record.error))) return null;
   return record;
@@ -699,6 +739,49 @@ function createOAuthRandomValue_(prefix) {
   return prefix + Utilities.base64EncodeWebSafe(digest).replace(/=+$/, '');
 }
 
+function createOAuthOtp_() {
+  // Rejection sampling avoids modulo bias. HMAC-SHA256 keyed by the
+  // server-only OAuth client secret turns unique UUID/time material into
+  // unpredictable bytes without relying on a non-cryptographic PRNG.
+  var upperBound = 4294000000; // floor(2^32 / 1,000,000) * 1,000,000
+  for (var counter = 0; counter < 8; counter += 1) {
+    var material = [
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      String(Date.now()),
+      String(counter)
+    ].join('|');
+    var bytes = Utilities.computeHmacSha256Signature(
+      'crs-oauth-otp-v1|' + material,
+      getGoogleOAuthServerConfig_().clientSecret,
+      Utilities.Charset.UTF_8
+    );
+    for (var offset = 0; offset <= bytes.length - 4; offset += 4) {
+      var value = ((bytes[offset] & 255) * 16777216) +
+        ((bytes[offset + 1] & 255) * 65536) +
+        ((bytes[offset + 2] & 255) * 256) +
+        (bytes[offset + 3] & 255);
+      if (value < upperBound) return ('000000' + String(value % 1000000)).slice(-6);
+    }
+  }
+  throw new AppError_('AUTH_SERVICE_UNAVAILABLE',
+    'ไม่สามารถสร้างรหัสยืนยันได้ กรุณาเริ่มลงชื่อเข้าใช้ใหม่', null, true);
+}
+
+function hashOAuthOtp_(flowCacheKey, flow, otp) {
+  var digest = Utilities.computeHmacSha256Signature([
+    'crs-oauth-otp-hash-v1',
+    String(flowCacheKey || ''),
+    String(flow && flow.visitorBindingHash || ''),
+    String(flow && flow.pollTokenHash || ''),
+    String(flow && flow.sessionTokenHash || ''),
+    String(otp || '')
+  ].join('|'), getGoogleOAuthServerConfig_().clientSecret, Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(digest).replace(/=+$/, '');
+}
+
 function sha256Base64Url_(value) {
   var digest = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
@@ -727,18 +810,31 @@ function formUrlEncode_(values) {
 }
 
 function createOAuthCallbackOutput_(handoffCode) {
-  var valid = /^confirm1_[A-Za-z0-9_-]{43}$/.test(String(handoffCode || ''));
+  var valid = OAUTH_OTP_PATTERN_.test(String(handoffCode || ''));
   var title = valid ? 'ยืนยันการลงชื่อเข้าใช้' : 'ลงชื่อเข้าใช้ไม่สำเร็จ';
+  var pageTitle = title + ' · CRS Yuem-Kuen';
   var message = valid
-    ? 'คัดลอกรหัสด้านล่างกลับไปวางในแท็บ CRS ที่คุณเริ่มลงชื่อเข้าใช้ด้วยตนเองเท่านั้น ห้ามส่งรหัสให้ผู้อื่น หากมีคนส่งลิงก์ให้คุณลงชื่อเข้าใช้ ให้ปิดหน้านี้'
+    ? 'คัดลอกรหัสด้านล่างกลับไปวางในแท็บ CRS Yuem-Kuen ที่คุณเริ่มลงชื่อเข้าใช้ด้วยตนเองเท่านั้น ห้ามส่งรหัสให้ผู้อื่น หากมีคนส่งลิงก์ให้คุณลงชื่อเข้าใช้ ให้ปิดหน้านี้'
     : 'คำขอไม่ถูกต้อง หมดอายุ หรือถูกใช้แล้ว กรุณากลับไปเริ่มลงชื่อเข้าใช้ใหม่';
   var html = '<!doctype html><html lang="th"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">' +
-    '<title>' + title + '</title></head><body><main><h1>' + title +
+    '<title>' + pageTitle + '</title><style>' +
+    'body{margin:0;padding:clamp(12px,4vw,24px);background:#f5f7fa;color:#172033;font-family:system-ui,sans-serif}' +
+    'main{max-width:520px;margin:8vh auto;padding:clamp(20px,6vw,32px);border-radius:18px;background:#fff;box-shadow:0 12px 36px rgba(16,24,40,.12)}' +
+    '#oauth-handoff-code{display:block;box-sizing:border-box;width:100%;margin:20px 0 12px;padding:16px 8px;border:2px solid #155e75;border-radius:12px;background:#f8fafc;color:#101828;font:700 clamp(2rem,10vw,4rem)/1 ui-monospace,monospace;letter-spacing:.12em;text-align:center}' +
+    'button{min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:#155e75;color:#fff;font:600 1rem system-ui,sans-serif;cursor:pointer}' +
+    '</style></head><body><main><p><strong>CRS Yuem-Kuen</strong></p><h1>' + title +
     '</h1><p>' + message + '</p>' +
-    (valid ? '<label>รหัสยืนยัน <input id="oauth-handoff-code" readonly size="56" value="' +
-      handoffCode + '"></label><p>รหัสใช้ได้ครั้งเดียวและหมดอายุอัตโนมัติ</p>' : '') +
+    (valid ? '<label for="oauth-handoff-code">รหัสยืนยันการลงชื่อเข้าใช้</label>' +
+      '<input id="oauth-handoff-code" readonly inputmode="numeric" value="' + handoffCode + '">' +
+      '<button id="oauth-handoff-copy" type="button">คัดลอกรหัส</button>' +
+      '<p id="oauth-copy-status" role="status" aria-live="polite"></p>' +
+      '<p>รหัสใช้ได้ครั้งเดียวและหมดอายุภายใน 5 นาที</p>' +
+      '<script>(function(){var b=document.getElementById("oauth-handoff-copy"),c=document.getElementById("oauth-handoff-code"),s=document.getElementById("oauth-copy-status");' +
+      'b.addEventListener("click",function(){var done=function(){s.textContent="คัดลอกรหัสแล้ว";};' +
+      'if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(c.value).then(done,function(){c.select();document.execCommand("copy");done();});}' +
+      'else{c.select();document.execCommand("copy");done();}});})();<\/script>' : '') +
     '</main></body></html>';
-  return HtmlService.createHtmlOutput(html).setTitle(title);
+  return HtmlService.createHtmlOutput(html).setTitle(pageTitle);
 }

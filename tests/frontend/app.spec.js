@@ -73,8 +73,20 @@ async function signInWithServerOAuth(page) {
 }
 async function confirmOAuth(page) {
   await expect(page.locator('#oauth-handoff-panel')).toBeVisible();
-  await page.locator('#oauth-handoff-input').fill('confirm1_' + 'c'.repeat(43));
+  await pasteOtp(page, '123456');
   await page.locator('#oauth-handoff-submit').click();
+}
+
+async function pasteOtp(page, code) {
+  await page.locator('[data-otp-digit]').first().evaluate((input, value) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/plain', value);
+    input.dispatchEvent(new ClipboardEvent('paste', {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: transfer
+    }));
+  }, code);
 }
 
 async function openAuthenticated(page, url, route) {
@@ -83,11 +95,173 @@ async function openAuthenticated(page, url, route) {
   await waitForApplication(page, route);
 }
 
+test('six-field OTP supports numeric entry, backward deletion, paste, and accessible labels', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto('/?view=dashboard&role=admin');
+  await expect(page.locator('#access-state')).toBeVisible();
+  await page.locator('#google-signin-button').click();
+  await expect(page.locator('#oauth-handoff-panel')).toBeVisible();
+
+  const digits = page.locator('[data-otp-digit]');
+  await expect(digits).toHaveCount(6);
+  for (let index = 0; index < 6; index += 1) {
+    await expect(digits.nth(index)).toHaveAttribute('inputmode', 'numeric');
+    await expect(digits.nth(index)).toHaveAttribute('maxlength', '1');
+    await expect(digits.nth(index)).toHaveAttribute('aria-label', new RegExp(`${index + 1}.*6`));
+  }
+
+  await digits.nth(0).fill('1');
+  await expect(digits.nth(1)).toBeFocused();
+  await digits.nth(1).fill('2');
+  await digits.nth(2).press('Backspace');
+  await expect(digits.nth(1)).toBeFocused();
+  await expect(digits.nth(1)).toHaveValue('');
+
+  await digits.nth(0).evaluate((input) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/plain', '123456');
+    input.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  });
+  expect(await digits.evaluateAll((inputs) => inputs.map((input) => input.value)))
+    .toEqual(['1', '2', '3', '4', '5', '6']);
+  await expect(digits.nth(5)).toBeFocused();
+  const otpLayout = await page.locator('#oauth-handoff-inputs').evaluate((node) => ({
+    left: node.getBoundingClientRect().left,
+    right: node.getBoundingClientRect().right,
+    viewport: document.documentElement.clientWidth
+  }));
+  expect(otpLayout.left).toBeGreaterThanOrEqual(0);
+  expect(otpLayout.right).toBeLessThanOrEqual(otpLayout.viewport);
+  await digits.nth(5).press('Enter');
+  await waitForApplication(page, 'dashboard');
+});
+
+test('theme follows the system by default, persists all three states, and is keyboard accessible', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/?view=dashboard');
+
+  const root = page.locator('html');
+  const toggle = page.locator('#theme-toggle');
+  await expect(root).toHaveAttribute('data-theme-preference', 'system');
+  await expect(root).toHaveAttribute('data-bs-theme', 'dark');
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-label', /.+/);
+  await expect(toggle).toHaveAttribute('title', /.+/);
+  await expect(toggle.locator('[data-theme-icon]')).toHaveClass(/bi-circle-half/);
+  expect(await page.evaluate(() => localStorage.getItem('crs-theme'))).toBeNull();
+
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(root).toHaveAttribute('data-theme-preference', 'light');
+  await expect(root).toHaveAttribute('data-bs-theme', 'light');
+  await expect(toggle.locator('[data-theme-icon]')).toHaveClass(/bi-sun-fill/);
+  expect(await page.evaluate(() => localStorage.getItem('crs-theme'))).toBe('light');
+
+  await page.reload();
+  await expect(root).toHaveAttribute('data-theme-preference', 'light');
+  await expect(root).toHaveAttribute('data-bs-theme', 'light');
+
+  await toggle.focus();
+  await page.keyboard.press('Space');
+  await expect(root).toHaveAttribute('data-theme-preference', 'dark');
+  await expect(toggle.locator('[data-theme-icon]')).toHaveClass(/bi-moon-stars-fill/);
+  expect(await page.evaluate(() => localStorage.getItem('crs-theme'))).toBe('dark');
+
+  await toggle.click();
+  await expect(root).toHaveAttribute('data-theme-preference', 'system');
+  await expect(root).toHaveAttribute('data-bs-theme', 'dark');
+  expect(await page.evaluate(() => localStorage.getItem('crs-theme'))).toBe('system');
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(root).toHaveAttribute('data-bs-theme', 'light');
+});
+
+test('dark theme covers login, navigation, admin forms, tables, modal, alerts, and badges', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('crs-theme', 'dark'));
+  await openAuthenticated(page, '/?view=admin&role=admin', 'admin');
+  await page.locator('#admin-users-tab').click();
+  await page.locator('[data-action="add-user"]').click();
+  await page.evaluate(() => {
+    const fixture = document.createElement('div');
+    fixture.innerHTML = '<div class="alert alert-warning">Theme alert</div>' +
+      '<div class="dropdown-menu show"><button class="dropdown-item">Theme menu</button></div>' +
+      '<div class="surface-card"><h2>Theme heading</h2><label class="form-label">Theme label</label>' +
+      '<span class="text-body-secondary">Theme muted</span><a href="#">Theme link</a>' +
+      '<button class="btn btn-primary">Theme button</button>' +
+      '<span class="status-badge status-active">Active</span></div>' +
+      '<div class="table-card">Theme table</div>';
+    document.body.append(fixture);
+  });
+
+  const themed = await page.evaluate(() => {
+    const selectors = [
+      'body', '.app-topbar', '.app-sidebar', '.surface-card', '.form-control',
+      '.table-card', '.modal-content', '.status-badge', '.alert', '.dropdown-menu'
+    ];
+    const values = {};
+    selectors.forEach((selector) => {
+      const node = document.querySelector(selector);
+      if (!node) return;
+      const style = getComputedStyle(node);
+      values[selector] = { background: style.backgroundColor, color: style.color };
+    });
+    const rootStyle = getComputedStyle(document.documentElement);
+    const token = (name) => rootStyle.getPropertyValue(name).trim();
+    const rgb = (hex) => [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
+    const luminance = (hex) => {
+      const channels = rgb(hex).map((value) => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    };
+    const contrast = (foreground, background) => {
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (values[0] + 0.05) / (values[1] + 0.05);
+    };
+    return {
+      values,
+      canvas: token('--crs-canvas'),
+      surface: token('--crs-surface'),
+      contrast: {
+        body: contrast(token('--crs-ink'), token('--crs-canvas')),
+        card: contrast(token('--crs-ink'), token('--crs-surface')),
+        heading: contrast(token('--crs-heading'), token('--crs-surface')),
+        label: contrast(token('--crs-label'), token('--crs-surface')),
+        muted: contrast(token('--crs-muted'), token('--crs-surface')),
+        link: contrast(token('--crs-link'), token('--crs-surface')),
+        primaryButton: contrast(token('--crs-on-brand'), token('--crs-action')),
+        primaryButtonHover: contrast(token('--crs-on-brand'), token('--crs-action-hover')),
+        success: contrast(token('--crs-success'), token('--crs-success-bg')),
+        warning: contrast(token('--crs-warning'), token('--crs-warning-bg')),
+        danger: contrast(token('--crs-danger'), token('--crs-danger-bg')),
+        info: contrast(token('--crs-info'), token('--crs-info-bg'))
+      }
+    };
+  });
+
+  await expect(page.locator('html')).toHaveAttribute('data-bs-theme', 'dark');
+  await expect(page.locator('#theme-toggle')).toBeVisible();
+  await expect(page.locator('#modal-admin-user')).toBeVisible();
+  expect(themed.canvas).toBe('#0b1220');
+  expect(themed.surface).toBe('#111827');
+  expect(Object.keys(themed.values)).toEqual(expect.arrayContaining([
+    'body', '.app-topbar', '.app-sidebar', '.surface-card', '.form-control',
+    '.table-card', '.modal-content', '.status-badge', '.alert', '.dropdown-menu'
+  ]));
+  for (const [pair, ratio] of Object.entries(themed.contrast)) {
+    expect(ratio, `${pair} dark-theme contrast must meet WCAG AA`).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test('bootstrap fails closed and keeps the admin route role-gated', async ({ page }) => {
   const pageErrors = collectPageErrors(page);
 
   await openAuthenticated(page, '/?view=dashboard&role=admin', 'dashboard');
   await expect(page.locator('#dashboard-content')).toBeVisible();
+  await expect(page.locator('[data-app-short-name]').first()).toHaveText('CRS Yuem-Kuen');
+  await expect(page.locator('[data-app-name]').first()).toHaveText('CRS Yuem-Kuen System');
+  await expect(page).toHaveTitle('หน้าหลัก · CRS Yuem-Kuen System');
   await expect(page.locator('[data-session-name]').first()).toHaveText('ผู้ดูแลทดสอบ');
   await expect(page.locator('[data-route="admin"]').first()).toBeVisible();
 
@@ -100,6 +274,7 @@ test('bootstrap fails closed and keeps the admin route role-gated', async ({ pag
   await expect(page.locator('#app-splash')).toBeHidden();
   await expect(page.locator('#app-shell')).toBeHidden();
   await expect(page.locator('#access-state')).toBeVisible();
+  await expect(page.locator('#access-state [data-app-short-name]')).toHaveText('CRS Yuem-Kuen');
   await expect(page.locator('[data-access-title]')).toContainText('บัญชี');
   await expect(page.locator('[data-access-message]')).toContainText('ปิดใช้งาน');
   await expect(page.locator('#access-state button:visible')).toHaveCount(1);
@@ -175,7 +350,7 @@ test('server-side OAuth uses a protected code-flow popup and an opaque applicati
     sessionTokenHash: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
   });
   expect(polls.length).toBeGreaterThanOrEqual(3);
-  expect(polls.at(-1).args[2]).toBe('confirm1_' + 'c'.repeat(43));
+  expect(polls.at(-1).args[2]).toBe('123456');
   expect(polls.every((call) => call.sessionToken === '')).toBe(true);
   expect(polls.every((call) => /^flow1_[A-Za-z0-9_-]{43}$/.test(call.args[0]))).toBe(true);
   expect(polls.every((call) => /^poll1_[A-Za-z0-9_-]{43}$/.test(call.args[1]))).toBe(true);
@@ -207,7 +382,7 @@ test('polling without callback confirmation never opens the protected shell', as
   await page.waitForTimeout(1600);
   await expect(page.locator('#app-shell')).toBeHidden();
   expect(await page.evaluate(() => window.__CRS_TEST__.calls.some(c => c.method === 'getAppBootstrap'))).toBe(false);
-  await page.locator('#oauth-handoff-input').fill('wrong');
+  await pasteOtp(page, '000000');
   await page.locator('#oauth-handoff-submit').click();
   await expect(page.locator('#app-shell')).toBeHidden();
   await confirmOAuth(page);

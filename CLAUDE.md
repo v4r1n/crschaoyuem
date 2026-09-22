@@ -2,7 +2,7 @@
 
 ## Mission
 
-Build and maintain a production-usable internal equipment borrowing system for small and medium organizations. The runtime stack is Google Apps Script, Google Sheets, Google Drive, HTML/CSS/JavaScript, and Bootstrap 5. The product language is Thai.
+Build and maintain CRS Yuem-Kuen System, a production-usable internal equipment borrowing system for small and medium organizations. Use `CRS Yuem-Kuen` as the short brand and `CRS Yuem-Kuen System` as the full product name. The runtime stack is Google Apps Script, Google Sheets, Google Drive, HTML/CSS/JavaScript, and Bootstrap 5. The product language is Thai.
 
 ## Non-negotiable rules
 

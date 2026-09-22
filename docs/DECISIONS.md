@@ -1,4 +1,4 @@
-# Architectural Decisions
+# CRS Yuem-Kuen System Architectural Decisions
 
 Decisions are append-only. A later decision may supersede an earlier one but must not erase it.
 
@@ -157,3 +157,11 @@ Pending flows, callback claims, and application sessions live only in `ScriptCac
 ## ADR-019 — Pilot /exec callback with explicit browser confirmation
 
 Accepted for pilot: supersedes ADR-018's /usercallback/StateTokenBuilder transport and cross-callback temporary-key equality. Runtime evidence showed polling executions but no callback execution and a platform authorization error. doGet now routes opaque-state authorization responses on the configured exact Pilot /exec URL. State is one-time, server-side and TTL-bound; PKCE, nonce and ID-token validation remain. Callback creates only a pending identity candidate and displays a high-entropy one-time confirmation code. Session activation requires the user to paste that code into the original tab, together with its independent poll/session proofs. Automatic polling cannot activate a victim's session for an attacker who started the flow. Never share confirmation codes; actively relaying one to an attacker remains a phishing risk. Tests must explicitly use different callback contexts and prevent activation without handoff proof. Production remains unchanged pending live Workspace/Gmail acceptance.
+
+## ADR-020 — Rate-limited six-digit OAuth confirmation OTP
+
+Status: Accepted for Pilot — 2026-09-22
+
+ADR-019's explicit callback-to-original-tab confirmation remains, but the user-facing proof is now a six-digit numeric OTP. The server derives OTP entropy with HMAC-SHA256 keyed by the confidential OAuth client secret and rejection sampling; `Math.random()` is prohibited. Cache stores only a keyed OTP HMAC bound to the exact flow, visitor binding, poll proof, and candidate-session proof. Plaintext exists only long enough to render the callback page.
+
+The OTP expires after 300 seconds, allows at most five failed submissions, is deleted before session activation, and cannot be replayed. A valid OTP alone is insufficient: the original browser must also present both independent in-memory proofs. State, nonce, PKCE, Google ID-token verification, exact Users/ACTIVE/Role authorization, current-user rechecks, and per-visitor session isolation remain unchanged. Production promotion remains blocked until Pilot YRU/Gmail acceptance passes.

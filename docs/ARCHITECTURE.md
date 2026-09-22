@@ -1,4 +1,4 @@
-# System Architecture
+# CRS Yuem-Kuen System Architecture
 
 ## Goals
 
@@ -13,9 +13,9 @@ flowchart LR
   G -->|One-time code + opaque state| C[Apps Script doGet /exec]
   C -->|Server-side code exchange| G
   C -->|Verify identity; pending candidate only| K[ScriptCache auth records]
-  C -->|Display one-time confirmation code| U[User]
-  U -->|Paste code into original tab| H
-  H -->|Confirmation code + poll/session proofs activate session| K
+  C -->|Display one-time 6-digit OTP| U[User]
+  U -->|Paste OTP into original tab| H
+  H -->|OTP + poll/session proofs activate session| K
   H -->|google.script.run + opaque session| A[Guarded RPC API]
   A -->|Validate session; re-read Users row + role| V[Auth + authorization]
   V --> S[Domain services and state machine]
@@ -119,7 +119,7 @@ OAuth Client ต้องเป็นชนิด **Web application** และ�
 
 Visitor OAuth returns to the exact Pilot `/exec` URL configured in `GOOGLE_OAUTH_REDIRECT_URI` (Script Properties) and the OAuth Web application's Authorized redirect URIs. Do not use `/usercallback`, StateTokenBuilder, wildcard origins, or the production URL. `doGet` routes any code/error/state request to a private callback implementation; malformed/duplicate/replayed/expired state fails closed.
 
-Callback verifies Google identity but only stores a pending candidate, NOT an active session. It displays a one-time high-entropy confirmation code in minimal HTML without external assets. The user copies it to the original CRS tab. Confirmation requires that code plus the browser-held poll AND session proofs; polling alone never activates a session or returns the confirmation code. State and confirmation are bound to one flow and expire. Users/ACTIVE/Role are checked again at activation and on every business RPC. Copying the code to an attacker would authorize that attacker's flow: the UI explicitly warns never to share codes or complete login links sent by someone else.
+Callback verifies Google identity but only stores a pending candidate, NOT an active session. It displays a six-digit numeric OTP generated from a server-keyed HMAC CSPRNG. The server stores only a flow-bound OTP HMAC, never the plaintext code; the OTP expires after five minutes, permits at most five failed submissions, is consumed immediately on success, and cannot be replayed. Confirmation still requires the OTP plus the original browser-held poll AND session proofs. Users/ACTIVE/Role are checked again at activation and on every business RPC. Never share an OTP or complete a sign-in flow started by someone else.
 
 The callback does NOT read or compare `getTemporaryActiveUserKey()`. Its context may differ from the original RPC context. The existing temporary-key check remains only between begin/complete/business RPCs as additional defense; it is not relied on to stop attacker-started/victim-redeemed callbacks. No Google/session token appears in URLs. Raw callback state is hashed in cache; nonce/PKCE verifier are transient server-only cache data. Random server values use a domain-separated HMAC-SHA256 PRF keyed by the confidential OAuth client secret with UUID/time uniqueness input; protect/rotate that secret and never log it.
 

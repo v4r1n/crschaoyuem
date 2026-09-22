@@ -3,6 +3,80 @@
   'use strict';
 
   const CRS = global.CRS = global.CRS || {};
+  const THEME_STORAGE_KEY = 'crs-theme';
+  const THEME_ORDER = ['system', 'light', 'dark'];
+  const themeMedia = global.matchMedia ? global.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function validTheme(value) {
+    return THEME_ORDER.indexOf(value) !== -1 ? value : 'system';
+  }
+
+  function readThemePreference() {
+    try { return validTheme(global.localStorage.getItem(THEME_STORAGE_KEY)); }
+    catch (error) { return 'system'; }
+  }
+
+  function effectiveTheme(preference) {
+    return preference === 'system' ? (themeMedia && themeMedia.matches ? 'dark' : 'light') : preference;
+  }
+
+  function updateThemeControls(preference, effective) {
+    const labels = {
+      system: ['ธีมตามระบบ', 'ตามระบบ', 'light', 'bi-circle-half'],
+      light: ['โหมดสว่าง', 'สว่าง', 'dark', 'bi-sun-fill'],
+      dark: ['โหมดมืด', 'มืด', 'system', 'bi-moon-stars-fill']
+    };
+    const nextLabels = { light: 'โหมดสว่าง', dark: 'โหมดมืด', system: 'ตามระบบ' };
+    const meta = labels[preference];
+    Array.prototype.forEach.call(document.querySelectorAll('[data-action="theme-toggle"]'), function (button) {
+      const description = 'ธีม: ' + meta[1] + ' · เปลี่ยนเป็น' + nextLabels[meta[2]];
+      button.setAttribute('aria-label', description);
+      button.setAttribute('title', description);
+      button.setAttribute('aria-pressed', preference === 'system' ? 'mixed' : String(preference === 'dark'));
+      button.dataset.themePreference = preference;
+      button.dataset.effectiveTheme = effective;
+      const icon = button.querySelector('[data-theme-icon]');
+      if (icon) icon.className = 'bi ' + meta[3];
+      const label = button.querySelector('[data-theme-label]');
+      if (label) label.textContent = meta[0];
+    });
+  }
+
+  function applyTheme(preference, persist) {
+    const selected = validTheme(preference);
+    const effective = effectiveTheme(selected);
+    document.documentElement.dataset.themePreference = selected;
+    document.documentElement.setAttribute('data-bs-theme', effective);
+    document.documentElement.style.colorScheme = effective;
+    const themeColor = document.querySelector('meta[name="theme-color"]');
+    if (themeColor) {
+      const canvasColor = global.getComputedStyle(document.documentElement)
+        .getPropertyValue('--crs-canvas').trim();
+      if (canvasColor) themeColor.setAttribute('content', canvasColor);
+    }
+    if (persist) {
+      try { global.localStorage.setItem(THEME_STORAGE_KEY, selected); }
+      catch (error) { /* Theme remains active for this page when storage is unavailable. */ }
+    }
+    updateThemeControls(selected, effective);
+  }
+
+  function cycleTheme() {
+    const current = validTheme(document.documentElement.dataset.themePreference || readThemePreference());
+    applyTheme(THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length], true);
+  }
+
+  CRS.theme = Object.freeze({ apply: applyTheme, current: readThemePreference });
+  applyTheme(document.documentElement.dataset.themePreference || readThemePreference(), false);
+  if (themeMedia) {
+    const followSystemTheme = function () {
+      if ((document.documentElement.dataset.themePreference || 'system') === 'system') {
+        applyTheme('system', false);
+      }
+    };
+    if (typeof themeMedia.addEventListener === 'function') themeMedia.addEventListener('change', followSystemTheme);
+    else if (typeof themeMedia.addListener === 'function') themeMedia.addListener(followSystemTheme);
+  }
   const routeTitles = {
     dashboard: 'หน้าหลัก',
     equipment: 'อุปกรณ์',
@@ -462,7 +536,7 @@
     });
     CRS.setText('#page-title', routeTitles[route] || 'ระบบยืม–คืนอุปกรณ์');
     document.title = (routeTitles[route] || 'ระบบยืม–คืนอุปกรณ์') + ' · ' +
-      ((CRS.state.bootstrap && CRS.state.bootstrap.app.name) || 'CRS');
+      ((CRS.state.bootstrap && CRS.state.bootstrap.app.name) || 'CRS Yuem-Kuen System');
   }
 
   CRS.renderRoute = async function (route, params) {
@@ -531,6 +605,9 @@
   function applyBootstrap(data) {
     CRS.state.bootstrap = data;
     CRS.$$('[data-app-name]').forEach(function (node) { node.textContent = data.app.name; });
+    CRS.$$('[data-app-short-name]').forEach(function (node) {
+      node.textContent = data.app.shortName || 'CRS Yuem-Kuen';
+    });
     CRS.$$('[data-app-version]').forEach(function (node) { node.textContent = data.app.version; });
     CRS.$$('[data-session-name]').forEach(function (node) {
       node.textContent = data.session.name || data.session.email;
@@ -606,6 +683,8 @@
   }
 
   document.addEventListener('click', function (event) {
+    const themeToggle = event.target.closest('[data-action="theme-toggle"]');
+    if (themeToggle) cycleTheme();
     const routeLink = event.target.closest('[data-route]');
     if (routeLink) {
       event.preventDefault();

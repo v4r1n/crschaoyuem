@@ -2,10 +2,24 @@
 <html lang="th">
   <head>
     <meta charset="utf-8">
-    <meta name="color-scheme" content="light">
+    <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#155e75">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <meta name="robots" content="noindex, nofollow, noarchive">
+    <script>
+      (function () {
+        var preference = 'system';
+        try {
+          var stored = localStorage.getItem('crs-theme');
+          if (stored === 'light' || stored === 'dark' || stored === 'system') preference = stored;
+        } catch (error) { /* Storage denial keeps the safe system default. */ }
+        var dark = preference === 'dark' || (preference === 'system' &&
+          window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.themePreference = preference;
+        document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -30,6 +44,12 @@
     data-initial-asset-id="<?= initialAssetId ?>"
   >
     <a class="skip-link" href="#app-main">ข้ามไปยังเนื้อหาหลัก</a>
+    <button id="theme-toggle" class="theme-toggle" type="button" data-action="theme-toggle"
+            aria-label="ธีม: ตามระบบ กดเพื่อเปลี่ยนเป็นโหมดสว่าง"
+            title="ธีม: ตามระบบ · เปลี่ยนเป็นโหมดสว่าง">
+      <i class="bi bi-circle-half" data-theme-icon aria-hidden="true"></i>
+      <span class="visually-hidden" data-theme-label>ธีมตามระบบ</span>
+    </button>
 
     <noscript>
       <div class="noscript-message" role="alert">
@@ -50,7 +70,7 @@
           <i class="bi bi-box-seam"></i>
         </span>
         <div class="spinner-border text-primary mt-4" aria-hidden="true"></div>
-        <h1 class="h5 mt-3 mb-1">กำลังเปิดระบบยืม–คืนอุปกรณ์</h1>
+        <h1 class="h5 mt-3 mb-1">กำลังเปิด CRS Yuem-Kuen</h1>
         <p class="text-secondary mb-0">กำลังตรวจสอบบัญชีและสิทธิ์การใช้งาน</p>
       </div>
     </section>
@@ -67,7 +87,7 @@
         <span class="state-icon state-icon-warning mx-auto" aria-hidden="true">
           <i class="bi bi-person-lock"></i>
         </span>
-        <p id="access-state-eyebrow" class="eyebrow mt-4 mb-2">ไม่สามารถเปิดระบบได้</p>
+        <p id="access-state-eyebrow" class="eyebrow mt-4 mb-2" data-app-short-name>CRS Yuem-Kuen</p>
         <h1 id="access-state-title" class="h4 mb-2" data-access-title>กรุณาลงชื่อเข้าใช้ Google</h1>
         <p id="access-state-message" class="text-secondary mb-4" data-access-message>
           เลือกบัญชี Google ที่ได้รับสิทธิ์จากผู้ดูแลระบบ
@@ -83,10 +103,18 @@
           <span data-auth-button-label>ลงชื่อเข้าใช้ด้วย Google</span>
         </button>
         <div id="oauth-handoff-panel" hidden>
-          <p>คัดลอกรหัสจากหน้าต่าง Google กลับมาวางที่นี่ ห้ามรับหรือส่งรหัสให้ผู้อื่น</p>
-          <label for="oauth-handoff-input">รหัสยืนยันการลงชื่อเข้าใช้</label>
-          <input id="oauth-handoff-input" class="form-control" type="password" autocomplete="off" spellcheck="false" maxlength="52">
-          <button id="oauth-handoff-submit" type="button" class="btn btn-primary mt-2">ยืนยันการลงชื่อเข้าใช้</button>
+          <p class="oauth-handoff-guidance">คัดลอกรหัสจากหน้าต่าง Google กลับมาวางที่นี่ ห้ามรับหรือส่งรหัสให้ผู้อื่น</p>
+          <span id="oauth-handoff-label" class="oauth-handoff-label">รหัสยืนยันการลงชื่อเข้าใช้</span>
+          <div id="oauth-handoff-inputs" class="otp-input-group" role="group" aria-labelledby="oauth-handoff-label">
+            <input class="otp-digit" data-otp-digit type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="หลักที่ 1 จาก 6">
+            <input class="otp-digit" data-otp-digit type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="หลักที่ 2 จาก 6">
+            <input class="otp-digit" data-otp-digit type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="หลักที่ 3 จาก 6">
+            <input class="otp-digit" data-otp-digit type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="หลักที่ 4 จาก 6">
+            <input class="otp-digit" data-otp-digit type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="หลักที่ 5 จาก 6">
+            <input class="otp-digit" data-otp-digit type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="หลักที่ 6 จาก 6">
+          </div>
+          <p id="oauth-handoff-error" class="otp-error" role="alert" aria-live="assertive" hidden></p>
+          <button id="oauth-handoff-submit" type="button" class="btn btn-primary mt-3" disabled>ยืนยันการลงชื่อเข้าใช้</button>
         </div>
       </div>
     </section>
@@ -97,8 +125,8 @@
           <a class="brand-link" href="?view=dashboard" data-route="dashboard" aria-label="ไปหน้าแรก">
             <span class="brand-mark" aria-hidden="true"><i class="bi bi-box-seam"></i></span>
             <span class="brand-copy">
-              <strong data-app-name>ระบบยืม–คืนอุปกรณ์</strong>
-              <small>Equipment Center</small>
+              <strong data-app-short-name>CRS Yuem-Kuen</strong>
+              <small data-app-name>CRS Yuem-Kuen System</small>
             </span>
           </a>
         </div>
@@ -155,7 +183,7 @@
             <span class="brand-mark brand-mark-sm"><i class="bi bi-box-seam"></i></span>
           </div>
           <div class="topbar-heading">
-            <p id="topbar-eyebrow" class="eyebrow mb-0">ระบบยืม–คืนอุปกรณ์</p>
+            <p id="topbar-eyebrow" class="eyebrow mb-0" data-app-short-name>CRS Yuem-Kuen</p>
             <h1 id="page-title" class="topbar-title">หน้าแรก</h1>
           </div>
           <div class="topbar-actions ms-auto">

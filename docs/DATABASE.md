@@ -1,4 +1,4 @@
-# Google Sheets Database Schema
+# CRS Yuem-Kuen System — Google Sheets Database Schema
 
 Current additive contract is schema version `3`, consisting of immutable migrations `001_initial_schema`, `002_operation_journal_and_required_items`, and `003_operation_result_integrity_and_abort`.
 

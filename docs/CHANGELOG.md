@@ -1,4 +1,4 @@
-# Changelog
+# CRS Yuem-Kuen System Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+
+- Six-digit OAuth confirmation OTP with server-keyed CSPRNG generation, flow-bound hash-only storage, five-minute expiry, five-attempt lockout, replay prevention, callback copy control, and accessible six-field paste-aware input.
 
 - Phase 1 system architecture for a Google Apps Script HTML-service SPA.
 - Migration-friendly Google Sheets schema with stable IDs and append-only history.
@@ -77,4 +79,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Keep raw polling/session secrets only in page memory, revoke the current server session on sign-out, and require a fresh authorization flow plus full bootstrap after rejection or expiry.
 - Prohibit deployer-shared `UserProperties` as an auth/session store and prohibit ID, access, refresh, or application-session tokens in URLs.
 
-[Unreleased]: https://github.com/v4r1n/crs-equipment-borrowing-system/compare/main...codex/initial-v1
+[Unreleased]: https://github.com/v4r1n/crschaoyuem/commits/main

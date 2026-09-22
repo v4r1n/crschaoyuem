@@ -31,8 +31,11 @@ test('YRU and Gmail authenticate through code exchange to their own Users row', 
     const result = h.signInAs(email);
     expectOk(result.finish.pollResponse);
     sessions.push(h.state.sessionToken);
-    assert.equal(expectOk(h.invoke('getAppBootstrap')).session.email, email);
-    assert.equal(expectOk(h.invoke('getAppBootstrap')).session.role, 'USER');
+    const bootstrap = expectOk(h.invoke('getAppBootstrap'));
+    assert.equal(bootstrap.session.email, email);
+    assert.equal(bootstrap.session.role, 'USER');
+    assert.equal(bootstrap.app.name, 'CRS Yuem-Kuen System');
+    assert.equal(bootstrap.app.shortName, 'CRS Yuem-Kuen');
   }
   assert.notEqual(sessions[0], sessions[1]);
   expectError(h.invokeWithToken('getAppBootstrap', sessions[0]), 'UNAUTHENTICATED');
@@ -64,6 +67,16 @@ test('authorization URL and token POST use exact redirect, state, nonce and PKCE
     assert.equal(stored.includes(secret), false);
     assert.equal(result.callbackOutput.getContent().includes(secret), false);
   }
+});
+test('OAuth callback issues a six-digit OTP while cache retains only a flow-bound hash', () => {
+  const h = harness(), start = h.startOAuth();
+  const result = h.finishOAuth(start, { skipPoll: true });
+  assert.match(result.handoffCode, /^\d{6}$/);
+  assert.match(result.callbackOutput.getContent(), /id="oauth-handoff-copy"/);
+  const flow = JSON.parse(h.cache.get(h.context.oauthFlowCacheKey_(start.flowId)));
+  assert.equal(JSON.stringify(flow).includes(result.handoffCode), false);
+  assert.match(flow.otpHash, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(flow.handoffHash, undefined);
 });
 test('invalid token signatures, issuer, audience, expiry and nonce fail during callback', () => {
   const invalid = [
@@ -138,7 +151,7 @@ test('attacker-started/victim-redeemed flow does not yield a session through pol
   assert.equal(JSON.stringify(poll).includes(result.handoffCode),false);
   expectError(h.invokeWithToken('getDashboard',start.sessionToken),'UNAUTHENTICATED');
   expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,
-    'confirm1_'+'x'.repeat(43),start.sessionToken),'UNAUTHENTICATED');
+    result.handoffCode === '000000' ? '000001' : '000000',start.sessionToken),'OTP_INVALID');
 });
 test('confirmation requires both callback code and original browser proofs and is one-time', () => {
   const h=harness(), start=h.startOAuth();
@@ -151,6 +164,35 @@ test('confirmation requires both callback code and original browser proofs and i
   expectOk(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,result.handoffCode,start.sessionToken));
   expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,result.handoffCode,start.sessionToken),'UNAUTHENTICATED');
 });
+test('OTP allows limited correction, then locks the flow against brute force', () => {
+  {
+    const h = harness(), start = h.startOAuth(), result = h.finishOAuth(start, { skipPoll: true });
+    const wrong = result.handoffCode === '000000' ? '000001' : '000000';
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      expectError(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken,
+        wrong, start.sessionToken), 'OTP_INVALID');
+      const flow = JSON.parse(h.cache.get(h.context.oauthFlowCacheKey_(start.flowId)));
+      assert.equal(flow.status, 'AWAITING_CONFIRMATION');
+      assert.equal(flow.otpFailedAttempts, attempt);
+    }
+    expectOk(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken,
+      result.handoffCode, start.sessionToken));
+  }
+  {
+    const h = harness(), start = h.startOAuth(), result = h.finishOAuth(start, { skipPoll: true });
+    const wrong = result.handoffCode === '999999' ? '999998' : '999999';
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expectError(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken,
+        wrong, start.sessionToken), attempt === 4 ? 'UNAUTHENTICATED' : 'OTP_INVALID');
+    }
+    expectError(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken,
+      result.handoffCode, start.sessionToken), 'UNAUTHENTICATED');
+    const flow = JSON.parse(h.cache.get(h.context.oauthFlowCacheKey_(start.flowId)));
+    assert.equal(flow.status, 'CONSUMED');
+    assert.equal(flow.otpHash, undefined);
+    assert.equal(flow.candidate, undefined);
+  }
+});
 test('wrong stored PKCE verifier is rejected by the token endpoint', () => {
   const h=harness(), start=h.startOAuth();
   const key=h.context.oauthCallbackCacheKey_(start.stateToken);
@@ -162,7 +204,7 @@ test('wrong stored PKCE verifier is rejected by the token endpoint', () => {
 test('confirmation expires and current Users status is rechecked before session activation', () => {
   for(const action of ['expire','inactive']) {
     const h=harness(), start=h.startOAuth(), result=h.finishOAuth(start,{skipPoll:true});
-    if(action==='expire')h.advanceTime(601);
+    if(action==='expire')h.advanceTime(301);
     else h.replaceCell('Users','user_id','USR-000001','status','INACTIVE');
     expectError(h.invokeRaw('completeOAuthSignIn',start.flowId,start.pollToken,result.handoffCode,start.sessionToken),
       action==='expire'?'UNAUTHENTICATED':'USER_DISABLED');

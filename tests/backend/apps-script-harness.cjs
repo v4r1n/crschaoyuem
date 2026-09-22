@@ -800,7 +800,8 @@ function createAppsScriptHarness(options = {}) {
       finishOptions.eventOverrides || {}
     );
     const callbackOutput = invokeRaw('doGet', event);
-    const handoffCode = callbackOutput.getContent().match(/confirm1_[A-Za-z0-9_-]{43}/)?.[0] || '';
+    const handoffCode = callbackOutput.getContent()
+      .match(/id="oauth-handoff-code"[^>]*value="(\d{6})"/)?.[1] || '';
     const pollResponse = finishOptions.skipPoll
       ? null
       : invokeRaw('completeOAuthSignIn',

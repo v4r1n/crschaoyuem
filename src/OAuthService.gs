@@ -820,10 +820,11 @@ function createOAuthCallbackOutput_(handoffCode) {
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">' +
     '<title>' + pageTitle + '</title><style>' +
-    'body{margin:0;padding:clamp(12px,4vw,24px);background:#f5f7fa;color:#172033;font-family:system-ui,sans-serif}' +
-    'main{max-width:520px;margin:8vh auto;padding:clamp(20px,6vw,32px);border-radius:18px;background:#fff;box-shadow:0 12px 36px rgba(16,24,40,.12)}' +
+    'body{display:grid;box-sizing:border-box;min-height:100vh;margin:0;padding:clamp(12px,4vw,24px);place-items:center;background:#f5f7fa;color:#172033;font-family:system-ui,sans-serif}' +
+    'main{box-sizing:border-box;width:min(100%,520px);padding:clamp(20px,6vw,32px);border-radius:18px;background:#fff;box-shadow:0 12px 36px rgba(16,24,40,.12);text-align:center}' +
+    'main>p{margin-inline:auto}label{display:block;font-weight:600}' +
     '#oauth-handoff-code{display:block;box-sizing:border-box;width:100%;margin:20px 0 12px;padding:16px 8px;border:2px solid #155e75;border-radius:12px;background:#f8fafc;color:#101828;font:700 clamp(2rem,10vw,4rem)/1 ui-monospace,monospace;letter-spacing:.12em;text-align:center}' +
-    'button{min-height:44px;padding:10px 18px;border:0;border-radius:10px;background:#155e75;color:#fff;font:600 1rem system-ui,sans-serif;cursor:pointer}' +
+    'button{display:block;min-height:44px;margin:0 auto;padding:10px 18px;border:0;border-radius:10px;background:#155e75;color:#fff;font:600 1rem system-ui,sans-serif;cursor:pointer}' +
     '</style></head><body><main><p><strong>CRS Yuem-Kuen</strong></p><h1>' + title +
     '</h1><p>' + message + '</p>' +
     (valid ? '<label for="oauth-handoff-code">รหัสยืนยันการลงชื่อเข้าใช้</label>' +
@@ -832,7 +833,7 @@ function createOAuthCallbackOutput_(handoffCode) {
       '<p id="oauth-copy-status" role="status" aria-live="polite"></p>' +
       '<p>รหัสใช้ได้ครั้งเดียวและหมดอายุภายใน 5 นาที</p>' +
       '<script>(function(){var b=document.getElementById("oauth-handoff-copy"),c=document.getElementById("oauth-handoff-code"),s=document.getElementById("oauth-copy-status");' +
-      'b.addEventListener("click",function(){var done=function(){s.textContent="คัดลอกรหัสแล้ว";};' +
+      'b.addEventListener("click",function(){var done=function(){s.textContent="คัดลอกรหัสแล้ว หน้าต่างนี้จะปิดอัตโนมัติ";setTimeout(function(){window.close();},750);};' +
       'if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(c.value).then(done,function(){c.select();document.execCommand("copy");done();});}' +
       'else{c.select();document.execCommand("copy");done();}});})();<\/script>' : '') +
     '</main></body></html>';

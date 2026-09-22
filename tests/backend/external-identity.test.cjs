@@ -78,6 +78,14 @@ test('OAuth callback issues a six-digit OTP while cache retains only a flow-boun
   assert.match(flow.otpHash, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(flow.handoffHash, undefined);
 });
+test('OAuth callback centers its confirmation UI and closes itself after copying the OTP', () => {
+  const h = harness(), start = h.startOAuth();
+  const html = h.finishOAuth(start, { skipPoll: true }).callbackOutput.getContent();
+  assert.match(html, /body\{[^}]*display:grid[^}]*min-height:100vh[^}]*place-items:center/);
+  assert.match(html, /main\{[^}]*text-align:center/);
+  assert.match(html, /setTimeout\(function\(\)\{window\.close\(\);\},750\)/);
+  assert.match(html, /คัดลอกรหัสแล้ว หน้าต่างนี้จะปิดอัตโนมัติ/);
+});
 test('invalid token signatures, issuer, audience, expiry and nonce fail during callback', () => {
   const invalid = [
     { claims: { iss: 'https://attacker.example' } },

@@ -8,7 +8,8 @@
 - Uploaded 46 runtime files and created immutable Apps Script version **7**.
 - Downloaded version 7 to `D:/Projects/crs-pilot-v7-verified-20260922` and compared every runtime file after mapping `.gs` to `.js` and normalizing line endings/trailing file whitespace: **46/46 matched**, with no missing or extra files.
 - Downloaded version 7 manifest: `access=ANYONE`, `executeAs=USER_DEPLOYING`.
-- Updated only the deployment previously labeled `Pilot v6` to version 7. The separate version-1 deployment and the HEAD deployment were not changed.
+- Reconciled the target against the configured Pilot `/exec` URL: the current OAuth Pilot deployment was updated from version 1 to version 7, preserving its deployment ID and redirect URI.
+- During target reconciliation, the older Pilot deployment was briefly pointed at version 7 and immediately restored to version 6 before live acceptance. The final deployment listing confirms the current OAuth Pilot at version 7, the older Pilot at version 6, and the HEAD deployment unchanged.
 - No Script Properties, Sheet data, Drive permissions, OAuth client configuration, or Production promotion was performed by this rollout.
 
 ## Live acceptance still required

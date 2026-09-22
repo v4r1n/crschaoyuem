@@ -84,14 +84,14 @@
         </div>
 
         <form id="form-admin-borrow-filter" class="card card-body mb-4" novalidate>
-          <div class="row g-3 align-items-end">
-            <div class="col-12 col-lg-5">
+          <div class="admin-borrow-filter-grid">
+            <div class="admin-borrow-filter-search">
               <label for="admin-borrow-search" class="form-label">ค้นหารายการ</label>
               <input id="admin-borrow-search" name="search" type="search" class="form-control" autocomplete="off"
                      aria-describedby="admin-borrow-search-help">
               <div id="admin-borrow-search-help" class="form-text">เลขที่ยืม ผู้ยืม อีเมล รหัสทรัพย์สิน ชื่อ หรือ SKU</div>
             </div>
-            <div class="col-6 col-md-4 col-lg-3">
+            <div>
               <label for="admin-borrow-status" class="form-label">สถานะ</label>
               <select id="admin-borrow-status" name="status" class="form-select">
                 <option value="">ทุกสถานะ</option>
@@ -104,7 +104,7 @@
                 <option value="REJECTED">ไม่อนุมัติ</option>
               </select>
             </div>
-            <div class="col-6 col-md-4 col-lg-2">
+            <div>
               <label for="admin-borrow-sort" class="form-label">เรียงตาม</label>
               <select id="admin-borrow-sort" name="sortBy" class="form-select">
                 <option value="requested_at">เวลาส่งคำขอ</option>
@@ -116,7 +116,8 @@
               </select>
               <input name="sortDirection" type="hidden" value="desc">
             </div>
-            <div class="col-12 col-md-4 col-lg-2 d-grid">
+            <div class="admin-borrow-filter-action d-grid">
+              <span class="form-label admin-borrow-filter-action-label" aria-hidden="true">การแสดงผล</span>
               <button type="submit" class="btn btn-primary">แสดงรายการ</button>
             </div>
           </div>

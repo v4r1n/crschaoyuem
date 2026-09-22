@@ -515,6 +515,32 @@ test('admin borrowing action requires its explicit modal and sends the current v
   expect(pageErrors).toEqual([]);
 });
 
+test('admin borrowing filters align labels and controls on one desktop row', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openAuthenticated(page, routeUrl('admin'), 'admin');
+
+  const alignment = await page.locator('#form-admin-borrow-filter').evaluate((form) => {
+    const tops = (selectors) => selectors.map((selector) =>
+      Math.round(form.querySelector(selector).getBoundingClientRect().top));
+    return {
+      labels: tops([
+        'label[for="admin-borrow-search"]',
+        'label[for="admin-borrow-status"]',
+        'label[for="admin-borrow-sort"]',
+      ]),
+      controls: tops([
+        '#admin-borrow-search',
+        '#admin-borrow-status',
+        '#admin-borrow-sort',
+        'button[type="submit"]',
+      ]),
+    };
+  });
+
+  expect(Math.max(...alignment.labels) - Math.min(...alignment.labels)).toBeLessThanOrEqual(1);
+  expect(Math.max(...alignment.controls) - Math.min(...alignment.controls)).toBeLessThanOrEqual(1);
+});
+
 test('dashboard, catalog, detail, scanner, borrowing, and admin remain contained at 320/768/1440px', async ({ page }) => {
   test.setTimeout(60_000);
   const pageErrors = collectPageErrors(page);

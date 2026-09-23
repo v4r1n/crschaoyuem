@@ -1,0 +1,63 @@
+[1mdiff --git a/src/index.html b/src/index.html[m
+[1mindex 2af9e10..202df5a 100644[m
+[1m--- a/src/index.html[m
+[1m+++ b/src/index.html[m
+[36m@@ -105,7 +105,6 @@[m
+         <div class="form-check remember-session-option">[m
+           <input id="remember-session" class="form-check-input" type="checkbox">[m
+           <label class="form-check-label" for="remember-session">จดจำการเข้าสู่ระบบในอุปกรณ์นี้</label>[m
+[31m-          <div class="form-text">สำหรับอุปกรณ์ส่วนตัวเท่านั้น จดจำได้นานสูงสุด 6 ชั่วโมง</div>[m
+         </div>[m
+         <div id="oauth-handoff-panel" hidden>[m
+           <p class="oauth-handoff-guidance">คัดลอกรหัสจากหน้าต่าง Google กลับมาวางที่นี่ ห้ามรับหรือส่งรหัสให้ผู้อื่น</p>[m
+[36m@@ -131,7 +130,6 @@[m
+             <span class="brand-mark" aria-hidden="true"><i class="bi bi-box-seam"></i></span>[m
+             <span class="brand-copy">[m
+               <strong data-app-short-name>CRS Yuem-Kuen</strong>[m
+[31m-              <small data-app-name>CRS Yuem-Kuen System</small>[m
+             </span>[m
+           </a>[m
+         </div>[m
+[36m@@ -188,7 +186,6 @@[m
+             <span class="brand-mark brand-mark-sm"><i class="bi bi-box-seam"></i></span>[m
+           </div>[m
+           <div class="topbar-heading">[m
+[31m-            <p id="topbar-eyebrow" class="eyebrow mb-0" data-app-short-name>CRS Yuem-Kuen</p>[m
+             <h1 id="page-title" class="topbar-title">หน้าแรก</h1>[m
+           </div>[m
+           <div class="topbar-actions ms-auto">[m
+[1mdiff --git a/src/styles.html b/src/styles.html[m
+[1mindex 2d37b51..db252e0 100644[m
+[1m--- a/src/styles.html[m
+[1m+++ b/src/styles.html[m
+[36m@@ -224,7 +224,7 @@[m
+ [m
+   .theme-toggle {[m
+     position: fixed;[m
+[31m-    top: max(0.75rem, env(safe-area-inset-top));[m
+[32m+[m[32m    top: max(1rem, env(safe-area-inset-top));[m
+     right: max(0.75rem, env(safe-area-inset-right));[m
+     z-index: 1095;[m
+     display: inline-grid;[m
+[36m@@ -585,9 +585,10 @@[m
+   }[m
+ [m
+   .remember-session-option {[m
+[31m-    width: min(100%, 24rem);[m
+[32m+[m[32m    width: min(100%, 15rem);[m
+     margin: 0 auto 1rem;[m
+[31m-    text-align: left;[m
+[32m+[m[32m    text-align: center;[m
+[32m+[m[32m    color: var(--crs-label);[m
+   }[m
+ [m
+   .otp-input-group {[m
+[36m@@ -964,7 +965,7 @@[m
+     display: flex;[m
+     align-items: center;[m
+     min-height: var(--crs-topbar-height);[m
+[31m-    padding: 0.7rem clamp(1rem, 3vw, 2rem);[m
+[32m+[m[32m    padding: 0.1rem clamp(1rem, 3vw, 2rem);[m
+     gap: 0.75rem;[m
+     border-bottom: 1px solid var(--crs-card-border-translucent);[m
+     background: var(--crs-topbar-bg);[m

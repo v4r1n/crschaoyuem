@@ -27,7 +27,7 @@ CRS Yuem-Kuen System คือระบบเว็บภาษาไทยส�
 
 ## ข้อกำหนดสำคัญด้านบัญชี
 
-ระบบรองรับ Google Workspace และบัญชี `@gmail.com` ตาม exact allowlist ใน `ALLOWED_DOMAINS` โดย fallback ไปอ่าน `ALLOWED_DOMAIN` เดิมเมื่อยังไม่ได้ตั้งค่ารายการใหม่ Browser เปิด Google Authorization endpoint ใน popup ส่วน Apps Script รับ authorization code ที่ callback `/exec`, แลก token ฝั่ง serverแล้วตรวจลายเซ็น, issuer, audience, expiry, nonce และอีเมลที่ Google ยืนยัน ก่อนตรวจ Users row, `ACTIVE` status และ role อีกชั้น Browser ได้เฉพาะ opaque application session อายุไม่เกิน 6 ชั่วโมง: ค่าเริ่มต้นอยู่ใน `sessionStorage` และเมื่อผู้ใช้เลือก “จดจำการเข้าสู่ระบบ” จึงอยู่ใน `localStorage`; ไม่เก็บ Google token/email/role และทุก business RPC ยังตรวจ session, Users row, status และ role ใหม่ ระบบไม่ใช้ `Session.getActiveUser()` เป็น visitor identity, ไม่สร้าง Users row อัตโนมัติ และ fail closed เมื่อหลักฐานหรือสิทธิ์ไม่ครบ
+ระบบรองรับ Google Workspace และบัญชี `@gmail.com` ตาม exact allowlist ใน `ALLOWED_DOMAINS` โดย fallback ไปอ่าน `ALLOWED_DOMAIN` เดิมเมื่อยังไม่ได้ตั้งค่ารายการใหม่ Browser เปิด Google Authorization endpoint ใน popup ส่วน Apps Script รับ authorization code ที่ callback `/exec`, แลก token ฝั่ง server แล้วตรวจลายเซ็น, issuer, audience, expiry, nonce และอีเมลที่ Google ยืนยัน ก่อนตรวจ Users row, `ACTIVE` status และ role อีกชั้น Browser ได้เฉพาะ opaque application session อายุไม่เกิน 6 ชั่วโมง: ค่าเริ่มต้นอยู่ใน `sessionStorage` และเมื่อผู้ใช้เลือก “จดจำการเข้าสู่ระบบ” จึงอยู่ใน `localStorage`; ไม่เก็บ Google token/email/role และทุก business RPC ยังตรวจ session, Users row, status และ role ใหม่ ระบบไม่ใช้ `Session.getActiveUser()` เป็น visitor identity, ไม่สร้าง Users row อัตโนมัติ และ fail closed เมื่อหลักฐานหรือสิทธิ์ไม่ครบ
 
 ## การติดตั้ง
 

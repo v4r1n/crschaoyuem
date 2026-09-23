@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Opt-in six-hour remembered application sessions with default same-tab `sessionStorage`, explicit `localStorage`, expiry validation, fail-closed eviction handling, and synchronized cross-tab logout; browser storage contains only the opaque application token and expiry.
+- One-time callback Copy acknowledgement so the initiating tab can reliably close the Apps Script popup despite the callback iframe boundary.
+- Shared desktop borrowing-filter grid for Admin and My Borrow so search, status, sort, and submit controls align on one row.
 - Six-digit OAuth confirmation OTP with server-keyed CSPRNG generation, flow-bound hash-only storage, five-minute expiry, five-attempt lockout, replay prevention, callback copy control, and accessible six-field paste-aware input.
 
 - Phase 1 system architecture for a Google Apps Script HTML-service SPA.
@@ -42,7 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Production sign-off guidance for the server-side OAuth callback, Workspace/Gmail OIDC verification, temporary-user-key binding, Drive image sharing, physical QR scanning, native mobile capture, deployed HTML-service behavior, and organization-owned evidence.
 - Server-side OAuth 2.0/OpenID Connect Authorization Code flow using Apps Script `StateTokenBuilder`, exact `/usercallback` redirect, CSRF state, nonce, PKCE S256, one-time callback claims, and server-side code exchange.
 - Backend Google ID-token verification against rotating JWKS, including signature, issuer, audience, authorized-party, time, nonce, subject, verified-email, Gmail, and Workspace hosted-domain checks; the ID token never enters browser application state.
-- Memory-only opaque application sessions backed by hashed, expiring `ScriptCache` records and bound to verified identity, Users row, OAuth client, and temporary active-user key.
+- Opaque application sessions backed by hashed, expiring `ScriptCache` records and bound to verified identity, Users row, OAuth client, and temporary active-user key.
 - Multi-domain configuration through `ALLOWED_DOMAINS` with backward-compatible `ALLOWED_DOMAIN` fallback and deployment-only `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `AUTH_FLOW_TTL_SECONDS`, and `AUTH_SESSION_TTL_SECONDS` Script Properties.
 - Automated authentication coverage for Workspace and Gmail users, callback state/nonce/PKCE and replay handling, invalid domains, invalid/expired tokens and sessions, inactive accounts, isolation, logout, and role escalation attempts.
 - Automated deployment-runbook contract that keeps all runtime filenames, configuration keys, and eleven required rollout steps synchronized with source.
@@ -76,7 +79,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pin the manifest to Drive, Sheets, deployer email, and `script.external_request` for Google token exchange/JWKS; document the exact `/usercallback` URI, temporary-user-key pilot, external-account image-link boundary, non-retroactive sharing, restricted project editors, and project-wide property rollback risk.
 - Require exactly one active Users row and current server-side role for every request; verified Google identity never auto-provisions or grants application privilege.
 - Cache Google's JWKS in its validated document shape while honoring `Cache-Control: max-age`/`Age`, including immediate no-cache responses; treat cache failures as non-fatal and reject unknown key IDs against a fresh key set without attacker-triggered refresh loops.
-- Keep raw polling/session secrets only in page memory, revoke the current server session on sign-out, and require a fresh authorization flow plus full bootstrap after rejection or expiry.
+- Keep OAuth poll/session candidates in page memory during authorization; after activation persist only the opaque application token according to the user's remember choice, revoke it on sign-out, and require a fresh flow after rejection or expiry.
 - Prohibit deployer-shared `UserProperties` as an auth/session store and prohibit ID, access, refresh, or application-session tokens in URLs.
 
 [Unreleased]: https://github.com/v4r1n/crschaoyuem/commits/main

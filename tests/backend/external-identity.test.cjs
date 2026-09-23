@@ -78,13 +78,30 @@ test('OAuth callback issues a six-digit OTP while cache retains only a flow-boun
   assert.match(flow.otpHash, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(flow.handoffHash, undefined);
 });
-test('OAuth callback centers its confirmation UI and closes itself after copying the OTP', () => {
+test('OAuth callback centers its confirmation UI and closes the top-level popup after copying the OTP', () => {
   const h = harness(), start = h.startOAuth();
   const html = h.finishOAuth(start, { skipPoll: true }).callbackOutput.getContent();
   assert.match(html, /body\{[^}]*display:grid[^}]*min-height:100vh[^}]*place-items:center/);
   assert.match(html, /main\{[^}]*text-align:center/);
-  assert.match(html, /setTimeout\(function\(\)\{window\.close\(\);\},750\)/);
+  assert.match(html, /window\.top\.close\(\)/);
+  assert.match(html, /window\.close\(\)/);
   assert.match(html, /คัดลอกรหัสแล้ว หน้าต่างนี้จะปิดอัตโนมัติ/);
+});
+test('copy acknowledgement lets the initiating browser close the Apps Script popup without activating a session', () => {
+  const h = harness(), start = h.startOAuth();
+  const result = h.finishOAuth(start, { skipPoll: true });
+  const html = result.callbackOutput.getContent();
+  const acknowledgement = html.match(/acknowledgeOAuthOtpCopy\("([^"]+)","([^"]+)"\)/);
+  assert.ok(acknowledgement, 'callback must contain a one-time server acknowledgement');
+  assert.equal(acknowledgement[1], start.flowId);
+
+  const before = expectOk(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken));
+  assert.equal(before.closePopup, false);
+  expectOk(h.invokeRaw('acknowledgeOAuthOtpCopy', acknowledgement[1], acknowledgement[2]));
+  const after = expectOk(h.invokeRaw('completeOAuthSignIn', start.flowId, start.pollToken));
+  assert.equal(after.closePopup, true);
+  expectError(h.invokeWithToken('getDashboard', start.sessionToken), 'UNAUTHENTICATED');
+  expectError(h.invokeRaw('acknowledgeOAuthOtpCopy', acknowledgement[1], acknowledgement[2]), 'UNAUTHENTICATED');
 });
 test('invalid token signatures, issuer, audience, expiry and nonce fail during callback', () => {
   const invalid = [
@@ -227,11 +244,19 @@ test('token endpoint errors and consent denial do not activate the session', () 
     expectError(h.invokeWithToken('getDashboard', result.start.sessionToken), 'UNAUTHENTICATED');
   }
 });
+test('application session uses a six-hour absolute TTL after verified Google sign-in', () => {
+  const h = harness();
+  const token = h.state.sessionToken;
+  h.advanceTime(3601);
+  expectOk(h.invokeWithToken('getDashboard', token));
+  h.advanceTime(18000);
+  expectError(h.invokeWithToken('getDashboard', token), 'UNAUTHENTICATED');
+});
 test('session expiry, eviction, logout, current user status and role are enforced', () => {
   for (const action of ['expiry', 'eviction', 'logout', 'inactive', 'role']) {
     const h = harness();
     const token = h.state.sessionToken;
-    if (action === 'expiry') h.advanceTime(3601);
+    if (action === 'expiry') h.advanceTime(21601);
     if (action === 'eviction') h.cache.values.clear();
     if (action === 'logout') expectOk(h.invokeRaw('logoutSession', token));
     if (action === 'inactive') h.replaceCell('Users', 'user_id', 'USR-000001', 'status', 'INACTIVE');

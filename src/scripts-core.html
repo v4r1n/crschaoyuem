@@ -677,7 +677,12 @@
       const target = locationTarget(location);
       CRS.renderRoute(target.name, target.params);
     } catch (error) {
-      showAccessError(error);
+      if (error && error.code === 'UNAUTHENTICATED' && CRS.auth &&
+        typeof CRS.auth.showGoogleSignIn === 'function') {
+        CRS.auth.showGoogleSignIn(error.message);
+      } else {
+        showAccessError(error);
+      }
       console.error(error);
     }
   }

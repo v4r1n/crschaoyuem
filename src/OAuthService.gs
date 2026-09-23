@@ -6,6 +6,7 @@ var OAUTH_FLOW_ID_PATTERN_ = /^flow1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_CALLBACK_KEY_PATTERN_ = /^callback1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_POLL_TOKEN_PATTERN_ = /^poll1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_SESSION_TOKEN_PATTERN_ = /^session1_[A-Za-z0-9_-]{43}$/;
+var OAUTH_COPY_TOKEN_PATTERN_ = /^copy1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_NONCE_PATTERN_ = /^nonce1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_PKCE_VERIFIER_PATTERN_ = /^pkce1_[A-Za-z0-9_-]{43}$/;
 var OAUTH_OTP_PATTERN_ = /^\d{6}$/;
@@ -41,6 +42,7 @@ function beginOAuthSignIn(input) {
     var visitorIndexKey = oauthVisitorIndexCacheKey_(visitorBindingHash);
     var flowRecord = {
       version: 1,
+      flowId: flowId,
       status: 'PENDING',
       visitorBindingHash: visitorBindingHash,
       pollTokenHash: pollTokenHash,
@@ -120,7 +122,11 @@ function completeOAuthSignIn(flowId, pollToken, handoffCode, sessionToken) {
             'รหัสยืนยันหมดอายุแล้ว กรุณาเริ่มลงชื่อเข้าใช้ใหม่', null, false);
         }
         // Polling never discloses the callback proof or activates a session.
-        if (!handoffCode) return { status: 'AWAITING_CONFIRMATION', expiresAt: flow.otpExpiresAt };
+        if (!handoffCode) return {
+          status: 'AWAITING_CONFIRMATION',
+          expiresAt: flow.otpExpiresAt,
+          closePopup: Boolean(flow.copyAcknowledgedAt)
+        };
         var normalizedSessionToken = requireOAuthSessionToken_(sessionToken);
         assertApp_(secureStringEquals_(flow.sessionTokenHash, sha256Base64Url_(normalizedSessionToken)),
           'UNAUTHENTICATED', 'ไม่สามารถยืนยันคำขอลงชื่อเข้าใช้นี้ได้', null, false);
@@ -180,6 +186,37 @@ function consumeOAuthConfirmation_(flow) {
   delete flow.otpHash;
   delete flow.otpExpiresAt;
   delete flow.otpFailedAttempts;
+  delete flow.copyTokenHash;
+  delete flow.copyAcknowledgedAt;
+}
+
+/**
+ * Confirms only that the callback Copy button was used. The initiating page
+ * still needs its independent poll/session secrets and the OTP to activate a
+ * session. This acknowledgement lets that page close the Apps Script popup,
+ * whose callback HTML runs inside a cross-origin iframe.
+ */
+function acknowledgeOAuthOtpCopy(flowId, copyToken) {
+  return executeSafely_(function () {
+    var normalizedFlowId = requireOAuthFlowId_(flowId);
+    var normalizedCopyToken = requireOAuthCopyToken_(copyToken);
+    return withOAuthLock_(function () {
+      var cache = getOAuthScriptCache_();
+      var flowCacheKey = oauthFlowCacheKey_(normalizedFlowId);
+      var flow = readOAuthFlowRecord_(cache, flowCacheKey);
+      var nowSeconds = Math.floor(Date.now() / 1000);
+      assertApp_(flow && flow.status === 'AWAITING_CONFIRMATION' &&
+        flow.otpExpiresAt > nowSeconds &&
+        OAUTH_SECRET_HASH_PATTERN_.test(String(flow.copyTokenHash || '')) &&
+        secureStringEquals_(flow.copyTokenHash, sha256Base64Url_(normalizedCopyToken)),
+      'UNAUTHENTICATED', 'คำขอยืนยันการคัดลอกรหัสไม่ถูกต้องหรือถูกใช้แล้ว', null, false);
+      flow.copyAcknowledgedAt = nowSeconds;
+      delete flow.copyTokenHash;
+      putOAuthCacheJson_(cache, flowCacheKey, flow,
+        Math.max(1, flow.expiresAt - nowSeconds));
+      return { acknowledged: true };
+    });
+  });
 }
 
 function logoutSession(sessionToken) {
@@ -201,7 +238,7 @@ function logoutSession(sessionToken) {
  */
 function googleOAuthCallback_(event) {
   var claim = null;
-  var handoffCode = '';
+  var confirmation = null;
   try {
     var callbackKey = requireOAuthCallbackKey_(singleOAuthCallbackParameter_(event, 'state'));
     var code = optionalSingleOAuthCallbackParameter_(event, 'code');
@@ -222,7 +259,7 @@ function googleOAuthCallback_(event) {
     var idToken = exchangeGoogleAuthorizationCode_(authorizationCode, claim.codeVerifier, claim.redirectUri);
     var identity = verifyGoogleIdToken_(idToken, claim.nonce);
     var user = requireUserForIdentity_(identity);
-    handoffCode = finalizeOAuthFlowSuccess_(claim, identity, user);
+    confirmation = finalizeOAuthFlowSuccess_(claim, identity, user);
   } catch (error) {
     if (claim) finalizeOAuthFlowFailureBestEffort_(claim, error);
     console.warn(JSON.stringify({
@@ -230,7 +267,7 @@ function googleOAuthCallback_(event) {
       code: error && error.name === 'AppError' ? error.code : 'INTERNAL'
     }));
   }
-  return createOAuthCallbackOutput_(handoffCode);
+  return createOAuthCallbackOutput_(confirmation);
 }
 
 function getGoogleOAuthServerConfig_() {
@@ -361,10 +398,10 @@ function claimOAuthFlow_(callbackKey) {
 function finalizeOAuthFlowSuccess_(claim, identity, user) {
   var oauthConfig = getGoogleOAuthServerConfig_();
   var nowSeconds = Math.floor(Date.now() / 1000);
-  var sessionExpiresAt = Math.min(
-    Number(identity.expiresAt),
-    nowSeconds + oauthConfig.sessionTtlSeconds
-  );
+  var identityExpiresAt = Number(identity.expiresAt);
+  var sessionExpiresAt = nowSeconds + oauthConfig.sessionTtlSeconds;
+  assertApp_(Number.isInteger(identityExpiresAt) && identityExpiresAt > nowSeconds,
+    'UNAUTHENTICATED', 'หลักฐานการลงชื่อเข้าใช้หมดอายุแล้ว กรุณาลองใหม่อีกครั้ง', null, false);
   assertApp_(Number.isInteger(sessionExpiresAt) && sessionExpiresAt > nowSeconds,
     'UNAUTHENTICATED', 'หลักฐานการลงชื่อเข้าใช้หมดอายุแล้ว กรุณาลองใหม่อีกครั้ง', null, false);
 
@@ -375,7 +412,7 @@ function finalizeOAuthFlowSuccess_(claim, identity, user) {
     assertApp_(secureStringEquals_(flow.clientId, oauthConfig.clientId), 'UNAUTHENTICATED',
       'การตั้งค่า OAuth เปลี่ยนแปลงแล้ว กรุณาเริ่มลงชื่อเข้าใช้ใหม่', null, false);
     var sessionRecord = {
-      version: 1,
+      version: 2,
       subject: identity.subject,
       email: normalizeEmail_(identity.email),
       userId: user.user_id,
@@ -383,19 +420,26 @@ function finalizeOAuthFlowSuccess_(claim, identity, user) {
       visitorBindingHash: claim.visitorBindingHash,
       sessionTokenHash: flow.sessionTokenHash,
       issuedAt: nowSeconds,
+      identityExpiresAt: identityExpiresAt,
       expiresAt: sessionExpiresAt
     };
     var handoffCode = createOAuthOtp_();
+    var copyToken = createOAuthRandomValue_('copy1_');
     flow.status = 'AWAITING_CONFIRMATION';
     flow.candidate = sessionRecord;
     flow.otpHash = hashOAuthOtp_(claim.flowCacheKey, flow, handoffCode);
     flow.otpExpiresAt = Math.min(flow.expiresAt, nowSeconds + OAUTH_OTP_TTL_SECONDS_);
     flow.otpFailedAttempts = 0;
+    flow.copyTokenHash = sha256Base64Url_(copyToken);
     flow.sessionExpiresAt = sessionExpiresAt;
     delete flow.claimId;
     putOAuthCacheJson_(cache, claim.flowCacheKey, flow,
       Math.max(1, flow.expiresAt - nowSeconds));
-    return handoffCode;
+    return {
+      handoffCode: handoffCode,
+      flowId: flow.flowId,
+      copyToken: copyToken
+    };
   });
 }
 
@@ -480,6 +524,7 @@ function assertClaimedOAuthFlow_(flow, claim) {
 function readOAuthFlowRecord_(cache, key) {
   var record = readOAuthCacheJson_(cache, key);
   if (!record || record.version !== 1 ||
+    !OAUTH_FLOW_ID_PATTERN_.test(String(record.flowId || '')) ||
     ['PENDING', 'PROCESSING', 'AWAITING_CONFIRMATION', 'DENIED', 'CONSUMED'].indexOf(record.status) === -1 ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || '')) ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.pollTokenHash || '')) ||
@@ -494,6 +539,8 @@ function readOAuthFlowRecord_(cache, key) {
   if (record.status === 'AWAITING_CONFIRMATION' &&
     (!Number.isInteger(record.sessionExpiresAt) || record.sessionExpiresAt <= record.createdAt ||
       !OAUTH_SECRET_HASH_PATTERN_.test(String(record.otpHash || '')) ||
+      (!(OAUTH_SECRET_HASH_PATTERN_.test(String(record.copyTokenHash || ''))) &&
+        !Number.isInteger(record.copyAcknowledgedAt)) ||
       !Number.isInteger(record.otpExpiresAt) || record.otpExpiresAt <= record.createdAt ||
       record.otpExpiresAt > record.expiresAt ||
       !Number.isInteger(record.otpFailedAttempts) || record.otpFailedAttempts < 0 ||
@@ -518,10 +565,11 @@ function readOAuthCallbackRecord_(cache, key) {
 
 function readOAuthSessionRecord_(cache, key) {
   var record = readOAuthCacheJson_(cache, key);
-  if (!record || record.version !== 1 ||
+  if (!record || record.version !== 2 ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || '')) ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.sessionTokenHash || '')) ||
-    !Number.isInteger(record.issuedAt) || !Number.isInteger(record.expiresAt) ||
+    !Number.isInteger(record.issuedAt) || !Number.isInteger(record.identityExpiresAt) ||
+    record.identityExpiresAt <= record.issuedAt || !Number.isInteger(record.expiresAt) ||
     record.expiresAt <= record.issuedAt) return null;
   return record;
 }
@@ -691,6 +739,13 @@ function requireOAuthSessionToken_(value) {
   return token;
 }
 
+function requireOAuthCopyToken_(value) {
+  var token = String(value || '').trim();
+  assertApp_(OAUTH_COPY_TOKEN_PATTERN_.test(token), 'UNAUTHENTICATED',
+    'คำขอยืนยันการคัดลอกรหัสไม่ถูกต้อง', null, false);
+  return token;
+}
+
 function requireOAuthNonce_(value) {
   var nonce = String(value || '').trim();
   assertApp_(OAUTH_NONCE_PATTERN_.test(nonce), 'UNAUTHENTICATED',
@@ -809,7 +864,8 @@ function formUrlEncode_(values) {
   }).join('&');
 }
 
-function createOAuthCallbackOutput_(handoffCode) {
+function createOAuthCallbackOutput_(confirmation) {
+  var handoffCode = confirmation && confirmation.handoffCode;
   var valid = OAUTH_OTP_PATTERN_.test(String(handoffCode || ''));
   var title = valid ? 'ยืนยันการลงชื่อเข้าใช้' : 'ลงชื่อเข้าใช้ไม่สำเร็จ';
   var pageTitle = title + ' · CRS Yuem-Kuen';
@@ -833,9 +889,10 @@ function createOAuthCallbackOutput_(handoffCode) {
       '<p id="oauth-copy-status" role="status" aria-live="polite"></p>' +
       '<p>รหัสใช้ได้ครั้งเดียวและหมดอายุภายใน 5 นาที</p>' +
       '<script>(function(){var b=document.getElementById("oauth-handoff-copy"),c=document.getElementById("oauth-handoff-code"),s=document.getElementById("oauth-copy-status");' +
-      'b.addEventListener("click",function(){var done=function(){s.textContent="คัดลอกรหัสแล้ว หน้าต่างนี้จะปิดอัตโนมัติ";setTimeout(function(){window.close();},750);};' +
-      'if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(c.value).then(done,function(){c.select();document.execCommand("copy");done();});}' +
-      'else{c.select();document.execCommand("copy");done();}});})();<\/script>' : '') +
+      'b.addEventListener("click",function(){var done=function(){s.textContent="คัดลอกรหัสแล้ว หน้าต่างนี้จะปิดอัตโนมัติ";setTimeout(function(){try{window.top.close();}catch(error){window.close();}},750);};' +
+      'var ack=function(){google.script.run.withSuccessHandler(done).withFailureHandler(done).acknowledgeOAuthOtpCopy("' + confirmation.flowId + '","' + confirmation.copyToken + '");};' +
+      'if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(c.value).then(ack,function(){c.select();document.execCommand("copy");ack();});}' +
+      'else{c.select();document.execCommand("copy");ack();}});})();<\/script>' : '') +
     '</main></body></html>';
   return HtmlService.createHtmlOutput(html).setTitle(pageTitle);
 }

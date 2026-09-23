@@ -531,10 +531,14 @@
     flow.completed = true;
     activeSessionHashes[flow.sessionTokenHash] = {
       flowId: flowId,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      expiresAt: Math.floor(Date.now() / 1000) + 21600
     };
     state.oauth.completedCount += 1;
-    return authEnvelope({ status: 'COMPLETE' });
+    return authEnvelope({
+      status: 'COMPLETE',
+      expiresAt: activeSessionHashes[flow.sessionTokenHash].expiresAt
+    });
   }
 
   async function responseForInvocation(method, rawArgs) {
@@ -548,6 +552,14 @@
       if (sessionHash) delete activeSessionHashes[sessionHash];
       state.oauth.logoutCount += 1;
       return authEnvelope({ loggedOut: true });
+    }
+    if (controls.get('restore') === 'valid' && /^session1_[A-Za-z0-9_-]{43}$/.test(sessionToken) &&
+      !activeSessionHashes[sessionHash]) {
+      activeSessionHashes[sessionHash] = {
+        flowId: 'restored-test-session',
+        createdAt: Date.now(),
+        expiresAt: Math.floor(Date.now() / 1000) + 21600
+      };
     }
     if (!/^session1_[A-Za-z0-9_-]{43}$/.test(sessionToken) || !activeSessionHashes[sessionHash]) {
       return authErrorEnvelope('UNAUTHENTICATED', 'Missing or invalid application session');

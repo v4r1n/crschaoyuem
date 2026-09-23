@@ -2,6 +2,11 @@
 (function (global) {
   'use strict';
 
+  const AUTH_SESSION_STORAGE_KEY = 'crs.auth.session.v1';
+  const AUTH_REMEMBER_STORAGE_KEY = 'crs.auth.remember.v1';
+  const AUTH_SESSION_TOKEN_PATTERN = /^session1_[A-Za-z0-9_-]{43}$/;
+  const AUTH_SESSION_MAX_SECONDS = 21600;
+
   class ClientApiError extends Error {
     constructor(error, requestId) {
       const source = error || {};
@@ -16,6 +21,7 @@
 
   const authState = {
     sessionToken: '',
+    sessionExpiresAt: 0,
     initialized: false,
     attempt: null,
     generation: 0,
@@ -23,6 +29,86 @@
     sessionResolve: null,
     sessionReject: null
   };
+
+  function storageGet(storage, key) {
+    try { return storage.getItem(key); }
+    catch (error) { return null; }
+  }
+
+  function storageSet(storage, key, value) {
+    try { storage.setItem(key, value); return true; }
+    catch (error) { return false; }
+  }
+
+  function storageRemove(storage, key) {
+    try { storage.removeItem(key); }
+    catch (error) { /* Storage denial is already fail closed in memory. */ }
+  }
+
+  function parseStoredSession(serialized) {
+    if (!serialized) return null;
+    let record;
+    try { record = JSON.parse(serialized); }
+    catch (error) { return null; }
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (!record || record.version !== 1 ||
+      !AUTH_SESSION_TOKEN_PATTERN.test(String(record.token || '')) ||
+      !Number.isInteger(record.expiresAt) || record.expiresAt <= nowSeconds ||
+      record.expiresAt > nowSeconds + AUTH_SESSION_MAX_SECONDS + 60) return null;
+    return { version: 1, token: record.token, expiresAt: record.expiresAt };
+  }
+
+  function clearStoredSession() {
+    storageRemove(global.localStorage, AUTH_SESSION_STORAGE_KEY);
+    storageRemove(global.sessionStorage, AUTH_SESSION_STORAGE_KEY);
+  }
+
+  function restoreStoredSession() {
+    const persistentRaw = storageGet(global.localStorage, AUTH_SESSION_STORAGE_KEY);
+    const persistent = parseStoredSession(persistentRaw);
+    if (persistent) {
+      storageRemove(global.sessionStorage, AUTH_SESSION_STORAGE_KEY);
+      return persistent;
+    }
+    if (persistentRaw) storageRemove(global.localStorage, AUTH_SESSION_STORAGE_KEY);
+
+    const transientRaw = storageGet(global.sessionStorage, AUTH_SESSION_STORAGE_KEY);
+    const transient = parseStoredSession(transientRaw);
+    if (transient) return transient;
+    if (transientRaw) storageRemove(global.sessionStorage, AUTH_SESSION_STORAGE_KEY);
+    return null;
+  }
+
+  function persistApplicationSession(token, expiresAt, remember) {
+    const record = parseStoredSession(JSON.stringify({
+      version: 1,
+      token: token,
+      expiresAt: Number(expiresAt)
+    }));
+    if (!record) throw new ClientApiError({
+      code: 'AUTH_PROTOCOL_ERROR',
+      message: 'ระบบได้รับอายุ session ไม่ถูกต้อง กรุณาลงชื่อเข้าใช้ใหม่',
+      retryable: false
+    });
+    clearStoredSession();
+    const target = remember ? global.localStorage : global.sessionStorage;
+    if (!storageSet(target, AUTH_SESSION_STORAGE_KEY, JSON.stringify(record))) {
+      throw new ClientApiError({
+        code: 'CLIENT_STORAGE_UNAVAILABLE',
+        message: 'เบราว์เซอร์ไม่อนุญาตให้จดจำ session กรุณาตรวจการตั้งค่าความเป็นส่วนตัว',
+        retryable: true
+      });
+    }
+  }
+
+  function initializeRememberSessionControl() {
+    const checkbox = document.querySelector('#remember-session');
+    if (!checkbox) return;
+    checkbox.checked = storageGet(global.localStorage, AUTH_REMEMBER_STORAGE_KEY) === 'true';
+    checkbox.addEventListener('change', function () {
+      storageSet(global.localStorage, AUTH_REMEMBER_STORAGE_KEY, checkbox.checked ? 'true' : 'false');
+    });
+  }
 
   function showGoogleSignIn(message) {
     const splash = document.querySelector('#app-splash');
@@ -140,6 +226,12 @@
     if (authState.initialized) return;
     const button = document.querySelector('#google-signin-button');
     if (!button) return;
+    initializeRememberSessionControl();
+    const restored = restoreStoredSession();
+    if (restored) {
+      authState.sessionToken = restored.token;
+      authState.sessionExpiresAt = restored.expiresAt;
+    }
     initializeOtpInputs();
     button.addEventListener('click', startOAuthSignIn);
     document.querySelector('#oauth-handoff-submit').addEventListener('click', function () {
@@ -330,6 +422,10 @@
         throw error;
       }
       if (result && result.status === 'AWAITING_CONFIRMATION') {
+        if (result.closePopup && attempt.popup && !attempt.popup.closed) {
+          try { attempt.popup.close(); }
+          catch (ignored) { /* The OTP can still be entered if popup close is blocked. */ }
+        }
         const panel = document.querySelector('#oauth-handoff-panel');
         if (panel && panel.hidden) {
           panel.hidden = false;
@@ -338,7 +434,20 @@
         await delay(750);
         continue;
       }
-      if (result && result.status === 'COMPLETE') return;
+      if (result && result.status === 'COMPLETE') {
+        const sessionExpiresAt = Number(result.expiresAt);
+        if (!Number.isInteger(sessionExpiresAt) ||
+          sessionExpiresAt <= Math.floor(Date.now() / 1000) ||
+          sessionExpiresAt > Math.floor(Date.now() / 1000) + AUTH_SESSION_MAX_SECONDS + 60) {
+          throw new ClientApiError({
+            code: 'AUTH_PROTOCOL_ERROR',
+            message: 'ระบบได้รับอายุ session ไม่ถูกต้อง กรุณาลงชื่อเข้าใช้ใหม่',
+            retryable: false
+          });
+        }
+        attempt.sessionExpiresAt = sessionExpiresAt;
+        return;
+      }
       if (!result || result.status !== 'PENDING') {
         throw new ClientApiError({
           code: 'AUTH_PROTOCOL_ERROR',
@@ -379,6 +488,8 @@
       flowId: '',
       expiresAt: 0
     };
+    const rememberControl = document.querySelector('#remember-session');
+    attempt.remember = Boolean(rememberControl && rememberControl.checked);
     authState.attempt = attempt;
     document.querySelector('#oauth-handoff-panel').hidden = true;
     clearOtpInputs(false);
@@ -409,6 +520,8 @@
       if (authState.attempt !== attempt || generation !== authState.generation) return;
       const hadSessionWaiter = Boolean(authState.sessionResolve);
       authState.sessionToken = attempt.sessionToken;
+      authState.sessionExpiresAt = attempt.sessionExpiresAt;
+      persistApplicationSession(authState.sessionToken, authState.sessionExpiresAt, attempt.remember);
       settleSessionWaiter(null, authState.sessionToken);
       if (!hadSessionWaiter) {
         global.dispatchEvent(new CustomEvent('crs:authentication-required'));
@@ -445,6 +558,8 @@
   function clearSessionToken(expectedToken) {
     if (expectedToken && authState.sessionToken !== expectedToken) return false;
     authState.sessionToken = '';
+    authState.sessionExpiresAt = 0;
+    clearStoredSession();
     return true;
   }
 
@@ -492,6 +607,14 @@
   }
 
   document.addEventListener('DOMContentLoaded', initializeServerOAuth);
+  global.addEventListener('storage', function (event) {
+    if (event.key !== AUTH_SESSION_STORAGE_KEY || event.newValue !== null ||
+      !authState.sessionToken) return;
+    authState.sessionToken = '';
+    authState.sessionExpiresAt = 0;
+    storageRemove(global.sessionStorage, AUTH_SESSION_STORAGE_KEY);
+    global.dispatchEvent(new CustomEvent('crs:authentication-required'));
+  });
 
   global.CRS = global.CRS || {};
   global.CRS.ClientApiError = ClientApiError;

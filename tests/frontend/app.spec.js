@@ -283,10 +283,10 @@ test('bootstrap fails closed and keeps the admin route role-gated', async ({ pag
 
   const bootstrapCallCount = () => page.evaluate(() =>
     window.__CRS_TEST__.calls.filter((call) => call.method === 'getAppBootstrap').length);
-  expect(await bootstrapCallCount()).toBe(1);
+  expect(await bootstrapCallCount()).toBe(2);
   await page.locator('#google-signin-button').click();
   await confirmOAuth(page);
-  await expect.poll(bootstrapCallCount).toBe(2);
+  await expect.poll(bootstrapCallCount).toBe(3);
 
   expect(pageErrors).toEqual([]);
 });
@@ -370,9 +370,92 @@ test('server-side OAuth uses a protected code-flow popup and an opaque applicati
   expect(observed.localStorage).toEqual([['crs.equipment.view', 'cards']]);
   expect(JSON.stringify(observed.localStorage)).not.toContain(sessionToken);
   expect(JSON.stringify(observed.localStorage)).not.toContain(pollToken);
-  expect(observed.sessionStorage).toEqual([]);
+  expect(observed.sessionStorage).toEqual([
+    ['crs.auth.session.v1', expect.stringContaining(sessionToken)],
+  ]);
+  expect(JSON.stringify(observed.sessionStorage)).not.toContain(pollToken);
   expect(observed.cookie).toBe('');
   expect(pageErrors).toEqual([]);
+});
+
+test('invalid restored session fails closed, clears storage, and shows login without opening OAuth', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('crs.auth.session.v1', JSON.stringify({
+      version: 1,
+      token: `session1_${'A'.repeat(43)}`,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    }));
+  });
+  await page.goto('/?view=dashboard&role=user');
+
+  await expect(page.locator('#access-state')).toBeVisible();
+  await expect(page.locator('[data-access-title]')).toHaveText('ลงชื่อเข้าใช้ด้วย Google');
+  await expect(page.locator('#google-signin-button')).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem('crs.auth.session.v1'))).toBeNull();
+  expect(await page.evaluate(() => window.__CRS_TEST__.oauth.beginCount)).toBe(0);
+});
+
+test('opt-in session persistence restores across links and synchronizes logout across tabs', async ({ page, context }) => {
+  await page.goto('/?view=dashboard&role=user');
+  const remember = page.locator('#remember-session');
+  await expect(remember).toBeVisible();
+  await expect(remember).not.toBeChecked();
+  await remember.check();
+  await signInWithServerOAuth(page);
+  await waitForApplication(page, 'dashboard');
+
+  const stored = await page.evaluate(() => ({
+    persistent: localStorage.getItem('crs.auth.session.v1'),
+    transient: sessionStorage.getItem('crs.auth.session.v1'),
+    preference: localStorage.getItem('crs.auth.remember.v1'),
+  }));
+  expect(stored.persistent).toBeTruthy();
+  expect(stored.transient).toBeNull();
+  expect(stored.preference).toBe('true');
+  const record = JSON.parse(stored.persistent);
+  expect(record).toEqual({
+    version: 1,
+    token: expect.stringMatching(/^session1_[A-Za-z0-9_-]{43}$/),
+    expiresAt: expect.any(Number),
+  });
+
+  const secondPage = await context.newPage();
+  await secondPage.goto('/?view=my-borrow&role=user&restore=valid');
+  await waitForApplication(secondPage, 'my-borrow');
+  const restored = await secondPage.evaluate(() => ({
+    beginCount: window.__CRS_TEST__.oauth.beginCount,
+    bootstrapTokens: window.__CRS_TEST__.calls
+      .filter((call) => call.method === 'getAppBootstrap')
+      .map((call) => call.sessionToken),
+  }));
+  expect(restored.beginCount).toBe(0);
+  expect(restored.bootstrapTokens).toEqual([record.token]);
+
+  await secondPage.locator('a[href="?view=account"]:visible').first().click();
+  await secondPage.locator('[data-action="sign-out"]:visible').click();
+  await expect(secondPage.locator('#access-state')).toBeVisible();
+  await expect(page.locator('#access-state')).toBeVisible();
+  await expect(secondPage.locator('#remember-session')).toBeChecked();
+  expect(await secondPage.evaluate(() => localStorage.getItem('crs.auth.session.v1'))).toBeNull();
+  await secondPage.close();
+});
+
+test('non-remembered session survives same-tab navigation only in session storage', async ({ page }) => {
+  await page.goto('/?view=dashboard&role=user');
+  await expect(page.locator('#remember-session')).not.toBeChecked();
+  await signInWithServerOAuth(page);
+  await waitForApplication(page, 'dashboard');
+
+  const stored = await page.evaluate(() => ({
+    persistent: localStorage.getItem('crs.auth.session.v1'),
+    transient: sessionStorage.getItem('crs.auth.session.v1'),
+  }));
+  expect(stored.persistent).toBeNull();
+  expect(JSON.parse(stored.transient).token).toMatch(/^session1_[A-Za-z0-9_-]{43}$/);
+
+  await page.goto('/?view=my-borrow&role=user&restore=valid');
+  await waitForApplication(page, 'my-borrow');
+  expect(await page.evaluate(() => window.__CRS_TEST__.oauth.beginCount)).toBe(0);
 });
 
 test('polling without callback confirmation never opens the protected shell', async ({ page }) => {
@@ -532,6 +615,32 @@ test('admin borrowing filters align labels and controls on one desktop row', asy
         '#admin-borrow-search',
         '#admin-borrow-status',
         '#admin-borrow-sort',
+        'button[type="submit"]',
+      ]),
+    };
+  });
+
+  expect(Math.max(...alignment.labels) - Math.min(...alignment.labels)).toBeLessThanOrEqual(1);
+  expect(Math.max(...alignment.controls) - Math.min(...alignment.controls)).toBeLessThanOrEqual(1);
+});
+
+test('my borrowing filters align labels and controls on one desktop row', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openAuthenticated(page, routeUrl('my-borrow'), 'my-borrow');
+
+  const alignment = await page.locator('#form-my-borrow-filter').evaluate((form) => {
+    const tops = (selectors) => selectors.map((selector) =>
+      Math.round(form.querySelector(selector).getBoundingClientRect().top));
+    return {
+      labels: tops([
+        'label[for="my-borrow-search"]',
+        'label[for="my-borrow-status-filter"]',
+        'label[for="my-borrow-sort-direction"]',
+      ]),
+      controls: tops([
+        '#my-borrow-search',
+        '#my-borrow-status-filter',
+        '#my-borrow-sort-direction',
         'button[type="submit"]',
       ]),
     };

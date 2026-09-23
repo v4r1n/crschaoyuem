@@ -160,6 +160,7 @@ test('server exposes only the guarded RPCs and deliberate Apps Script entry poin
     'adminAuditLegacyUsers',
     'adminRepairLegacyUser',
     'adminUploadEquipmentImage',
+    'acknowledgeOAuthOtpCopy',
     'beginOAuthSignIn',
     'completeOAuthSignIn',
     'createBorrowRequest',
@@ -475,7 +476,7 @@ test('canonical CRS Yuem-Kuen branding is consistent across runtime and manifest
     /CRS (?:Equipment Borrowing System|Equipment|Chao-Yuem|Yuam-Kuen)|Equipment Center/);
 });
 
-test('server-side OAuth/OIDC uses a protected callback and memory-only application session', () => {
+test('server-side OAuth/OIDC uses a protected callback and bounded opaque application session', () => {
   const index = read('src/index.html');
   const api = read('src/scripts-api.html');
   const oauth = read('src/OAuthService.gs');
@@ -496,8 +497,15 @@ test('server-side OAuth/OIDC uses a protected callback and memory-only applicati
   assert.match(api, /serverRpc\s*\(\s*['"]completeOAuthSignIn['"]/);
   assert.match(api, /\[sessionToken\]\.concat\s*\(\s*args\s*\|\|\s*\[\]\s*\)/,
     'the browser API adapter must prepend an application session to every business RPC');
-  assert.doesNotMatch(api, /\b(?:localStorage|sessionStorage|document\.cookie)\b/,
-    'OAuth and application session secrets must stay in page memory');
+  assert.match(api, /AUTH_SESSION_STORAGE_KEY\s*=\s*['"]crs\.auth\.session\.v1['"]/);
+  assert.match(api, /AUTH_REMEMBER_STORAGE_KEY\s*=\s*['"]crs\.auth\.remember\.v1['"]/);
+  assert.match(api, /AUTH_SESSION_TOKEN_PATTERN\s*=\s*\/\^session1_/);
+  assert.match(api, /global\.localStorage/);
+  assert.match(api, /global\.sessionStorage/);
+  assert.doesNotMatch(api, /document\.cookie/,
+    'the application session must not be copied into browser cookies');
+  assert.doesNotMatch(api, /(?:localStorage|sessionStorage)[\s\S]{0,160}(?:idToken|accessToken|refreshToken)/,
+    'Google credentials must never be persisted in browser storage');
   assert.doesNotMatch(authoredRuntime,
     /[0-9]{6,}-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com/,
     'a concrete Google OAuth client ID must never be committed to runtime source');

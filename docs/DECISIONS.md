@@ -165,3 +165,11 @@ Status: Accepted for Pilot — 2026-09-22
 ADR-019's explicit callback-to-original-tab confirmation remains, but the user-facing proof is now a six-digit numeric OTP. The server derives OTP entropy with HMAC-SHA256 keyed by the confidential OAuth client secret and rejection sampling; `Math.random()` is prohibited. Cache stores only a keyed OTP HMAC bound to the exact flow, visitor binding, poll proof, and candidate-session proof. Plaintext exists only long enough to render the callback page.
 
 The OTP expires after 300 seconds, allows at most five failed submissions, is deleted before session activation, and cannot be replayed. A valid OTP alone is insufficient: the original browser must also present both independent in-memory proofs. State, nonce, PKCE, Google ID-token verification, exact Users/ACTIVE/Role authorization, current-user rechecks, and per-visitor session isolation remain unchanged. Production promotion remains blocked until Pilot YRU/Gmail acceptance passes.
+
+## ADR-021 — Opt-in remembered application session and popup acknowledgement
+
+Status: Accepted for Pilot — 2026-09-23
+
+After a verified OAuth/OTP activation, the application session has a six-hour absolute TTL. The browser stores only `{version, token, expiresAt}`: `sessionStorage` by default, or `localStorage` only when the user explicitly selects “จดจำการเข้าสู่ระบบในอุปกรณ์นี้”. Google ID/access/refresh tokens, email and role are never stored there. Logout removes the persistent record and synchronizes across tabs; malformed, expired, evicted or backend-rejected sessions are cleared and return to login without opening OAuth automatically. Every business RPC retains the server-side visitor binding plus current Users/ACTIVE/Role checks, so persistence does not convert cached authorization into authority.
+
+Apps Script callback HTML runs in a cross-origin iframe and cannot reliably close its top-level popup itself. The Copy button therefore sends a one-time, flow-bound acknowledgement to the backend. The initiating browser can observe that acknowledgement only with its existing poll proof and closes the popup through the WindowProxy it created. The acknowledgement does not disclose the OTP and cannot activate a session; activation still requires the OTP, poll proof and candidate-session proof.

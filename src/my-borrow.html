@@ -31,8 +31,8 @@
       <section id="my-borrow-list-pane" class="tab-pane fade show active" role="tabpanel"
                aria-labelledby="my-borrow-list-tab" tabindex="0">
         <form id="form-my-borrow-filter" class="card card-body mb-4" novalidate>
-          <div class="row g-3 align-items-end">
-            <div class="col-12 col-md-5">
+          <div class="borrowing-filter-grid">
+            <div class="borrowing-filter-search">
               <label for="my-borrow-search" class="form-label">ค้นหารายการ</label>
               <div class="input-group">
                 <span class="input-group-text" aria-hidden="true"><i class="bi bi-search"></i></span>
@@ -41,7 +41,7 @@
               </div>
               <div id="my-borrow-search-help" class="form-text">ค้นหาจากเลขที่ยืม รหัสทรัพย์สิน ชื่ออุปกรณ์ หรือ SKU</div>
             </div>
-            <div class="col-7 col-md-3">
+            <div>
               <label for="my-borrow-status-filter" class="form-label">สถานะ</label>
               <select id="my-borrow-status-filter" name="status" class="form-select">
                 <option value="">ทุกสถานะ</option>
@@ -54,7 +54,7 @@
                 <option value="REJECTED">ไม่อนุมัติ</option>
               </select>
             </div>
-            <div class="col-5 col-md-2">
+            <div>
               <label for="my-borrow-sort-direction" class="form-label">เรียงตามวันที่</label>
               <select id="my-borrow-sort-direction" name="sortDirection" class="form-select">
                 <option value="desc">ล่าสุดก่อน</option>
@@ -62,7 +62,8 @@
               </select>
               <input name="sortBy" type="hidden" value="requested_at">
             </div>
-            <div class="col-12 col-md-2 d-grid">
+            <div class="borrowing-filter-action d-grid">
+              <span class="form-label borrowing-filter-action-label" aria-hidden="true">การแสดงผล</span>
               <button type="submit" class="btn btn-primary">แสดงรายการ</button>
             </div>
           </div>

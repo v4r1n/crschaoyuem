@@ -173,7 +173,7 @@ Script Properties เป็นค่าร่วมของทั้ง web app
 | `ADMIN_EMAILS` | `admin1@yru.ac.th,admin2@gmail.com` | คั่นด้วย comma; ทุกบัญชีต้องอยู่ใน `ALLOWED_DOMAINS` และต้องมี Users row หลัง bootstrap |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | ตั้งค่าลับจาก Google Cloud โดยตรง | ห้ามใส่ source/Git/log/chat; เปลี่ยนทันทีหากเคยเปิดเผย |
 | `AUTH_FLOW_TTL_SECONDS` | `600` | อายุ flow 120–1800 วินาที |
-| `AUTH_SESSION_TTL_SECONDS` | `3600` | อายุ session 300–21600 วินาที และไม่เกิน ID token expiry |
+| `AUTH_SESSION_TTL_SECONDS` | `21600` | absolute application-session TTL 300–21600 วินาทีหลัง verified sign-in; `ScriptCache` อาจ evict ก่อนกำหนดและต้อง fail closed |
 | `GOOGLE_OAUTH_CLIENT_ID` | `1234567890-example.apps.googleusercontent.com` | OAuth 2.0 Client ID ชนิด Web application; เป็น ID ไม่ใช่ client secret |
 
 อย่าปล่อยให้ใช้ค่าเริ่มต้น `admin@example.com` จาก source บัญชีที่กด Run ครั้งแรกต้องอยู่ใน `ADMIN_EMAILS` และต้องเข้าถึง Sheet ได้
@@ -293,7 +293,7 @@ URL `/dev` จาก **Test deployments** เปิดได้เฉพาะ�
 
 Browser สร้าง poll/session secrets ด้วย Web Crypto เก็บใน memory เท่านั้น และส่ง hashes ไปเริ่ม flow Server ใช้ opaque one-time server-side state, nonce, PKCE S256 และ callback แบบ one-time แลก code ผ่าน POST แล้วตรวจ RS256/JWKS, issuer, audience/azp, expiry/iat/nbf, nonce และ verified email ก่อนตรวจ Users row Callback ไม่ส่ง ID/access/session token ใน URL; browser poll ผลและใช้ opaque session ใน RPC body
 
-Session ใช้ shared ScriptCache ที่แยก record ด้วย hash ของ secret ไม่ใช้ deployer UserProperties/UserCache ไม่เก็บ role ไว้เป็นสิทธิ์ถาวร ทุก RPC อ่านสิทธิ์จาก Users ใหม่ Cache ถูกล้าง/evict หรือ session หมดอายุจะต้อง sign in ใหม่
+Session ใช้ shared ScriptCache ที่แยก record ด้วย hash ของ secret ไม่ใช้ deployer UserProperties/UserCache ไม่เก็บ role ไว้เป็นสิทธิ์ถาวร ทุก RPC อ่านสิทธิ์จาก Users ใหม่ Browser เก็บเฉพาะ opaque application token + expiry ใน `sessionStorage` หรือ `localStorage` เมื่อผู้ใช้ opt in; ห้ามเก็บ Google token/email/role Cache ถูกล้าง/evict หรือ session หมดอายุ client ต้องล้าง tokenและแสดงหน้า login โดยไม่เปิด OAuth popup อัตโนมัติ
 
 **Release gate:** ระบบใช้ hash ของ `Session.getTemporaryActiveUserKey()` เป็น channel binding เท่านั้น ไม่ใช่ email/visitor identity ต้องพิสูจน์ในระบบจริงว่าค่าคงที่ระหว่าง begin/complete และ business RPC เท่านั้น ไม่ตรวจ key ใน callback สำหรับคนเดียวกัน และต่างกันระหว่างผู้ใช้ YRU/Gmail คนละบัญชี หาก key หาย/ต่างระหว่าง context/shared ข้ามบัญชี ให้หยุด rollout ไม่ปิด binding และไม่ fallback ไปใช้ ActiveUser/EffectiveUser ต้องแก้สถาปัตยกรรมก่อน production
 
@@ -364,7 +364,7 @@ Session ใช้ shared ScriptCache ที่แยก record ด้วย hash
 3. อัปโหลด source รุ่นใหม่เข้า Apps Script project เดิมให้ครบ 46 runtime files และเทียบ inventory สองทาง ไฟล์ `.gs/.html` เก่าที่ถูกถอดจาก repository ต้องผ่าน review แล้วนำออกจาก project ด้วย เพราะไฟล์ `.gs` ที่ค้างยังเป็น global callable code ได้
 4. อ่าน [MIGRATING.md](MIGRATING.md) แล้วรัน private editor function `setupSystem_()` เพื่อใช้ additive migrations
 5. ที่ **Deploy > Manage deployments** เลือก deployment production เดิม แล้วกด **Edit**
-6. ตรวจ **Execute as** เป็น **Me** (`USER_DEPLOYING`) และเปลี่ยน **Who has access** จาก **domain** เป็น **Anyone** (`ANYONE` สำหรับบัญชี Google ที่ลงชื่อเข้าใช้แล้ว); ต้องไม่ใช่ `ANYONE_ANONYMOUS`
+6. ก่อน deploy ทุกครั้ง ตรวจ **Execute as** เป็น **Me** (`USER_DEPLOYING`) และ **Who has access** เป็น **Anyone** (`ANYONE` สำหรับบัญชี Google ที่ลงชื่อเข้าใช้แล้ว); ต้องไม่ใช่ `DOMAIN` หรือ `ANYONE_ANONYMOUS`
 7. เลือก **New version**, ใส่ description ที่อ้าง source commit และกด Deploy
 8. ตรวจว่า deployment ID และ `/exec` URL ไม่เปลี่ยน จากนั้นทำ smoke test Workspace User, Gmail User, Admin และ QR
 
@@ -451,7 +451,7 @@ Google เปลี่ยน quota ได้โดยไม่แจ้งล่
 - Only after reviewing a repairable candidate and confirming data isolation from Production, Admin may call `await CRS.api.adminRepairLegacyUser({row: candidate.row, fingerprint: candidate.fingerprint, confirm: true, command_id: CRS.commandId()})`. Save the command ID first and retry the same input/command, or use Admin operation reconciliation after interruption. Never supply `user_id`. Backend rechecks under lock, journals the original row before allocation, writes one exact checked row and appends `REPAIR_USER_ID` audit without rewriting old History/Operations. Investigate stale fingerprints/reference conflicts; never bypass them. Blank IDs with audit records are conservatively blocked.
 - Deployments in one Apps Script project share Script Properties and may share the Sheet. Pilot-only code does NOT isolate data writes. No live repair is part of this rollout. Do not change shared properties or repair shared data as a side effect of testing.
 - Acceptance: edit/cancel an existing user then create an ACTIVE Gmail USER; verify CREATE_USER (not EDIT_USER), a generated ID and exactly one normalized email row. Verify YRU/Gmail login separately, inactive rejection and USER denial of all Admin RPCs. Use approved test records; automated mocks do not establish live acceptance.
-- Run `npm test`, back up HEAD, create an immutable version, download/compare all runtime files, update only the existing Pilot deployment, and confirm Production retains its original version. Updating an existing deployment preserves its `/exec` URL; no OAuth URI/property change is needed solely for a new version.
+- Run `npm test`, commit and push `main`, verify `USER_DEPLOYING` + `ANYONE`, create an immutable version, download/compare all runtime files, update only the existing Pilot deployment, and confirm Production retains its original version. Do not create a separate pre-deploy source backup. Updating an existing deployment preserves its `/exec` URL; no OAuth URI/property change is needed solely for a new version.
 
 ## Pilot callback confirmation update
 
@@ -461,4 +461,4 @@ Callback verifies Google identity but only stores a pending candidate, NOT an ac
 
 The callback does NOT read or compare `getTemporaryActiveUserKey()`. Its context may differ from the original RPC context. The existing temporary-key check remains only between begin/complete/business RPCs as additional defense; it is not relied on to stop attacker-started/victim-redeemed callbacks. No Google/session token appears in URLs. Raw callback state is hashed in cache; nonce/PKCE verifier are transient server-only cache data. Random server values use a domain-separated HMAC-SHA256 PRF keyed by the confidential OAuth client secret with UUID/time uniqueness input; protect/rotate that secret and never log it.
 
-Deployment procedure: pass all tests, back up HEAD, upload, create an immutable version, download that version and compare all source files, then update ONLY the existing Pilot deployment. Production promotion requires real YRU/Gmail login, confirmation, session isolation, and authorization acceptance. A configuration change does not prove successful login.
+Deployment procedure: pass all tests, commit and push `main`, verify `USER_DEPLOYING` + `ANYONE`, upload, create an immutable version, download and compare that version, then update ONLY the existing Pilot deployment. Do not create a separate pre-deploy source backup. Production promotion requires real YRU/Gmail login, confirmation, session isolation, and authorization acceptance.

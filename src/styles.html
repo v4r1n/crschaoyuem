@@ -562,14 +562,14 @@
     color: var(--crs-muted);
   }
 
-  .admin-borrow-filter-grid {
+  .borrowing-filter-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 1rem;
   }
 
-  .admin-borrow-filter-action-label {
+  .borrowing-filter-action-label {
     display: none;
     visibility: hidden;
   }
@@ -582,6 +582,12 @@
     display: block;
     margin-bottom: 0.55rem;
     color: var(--crs-auth-label);
+  }
+
+  .remember-session-option {
+    width: min(100%, 24rem);
+    margin: 0 auto 1rem;
+    text-align: left;
   }
 
   .otp-input-group {
@@ -1643,25 +1649,25 @@
   }
 
   @media (min-width: 768px) {
-    .admin-borrow-filter-grid {
+    .borrowing-filter-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .admin-borrow-filter-search {
+    .borrowing-filter-search {
       grid-column: 1 / -1;
     }
 
-    .admin-borrow-filter-action-label {
+    .borrowing-filter-action-label {
       display: block;
     }
   }
 
   @media (min-width: 992px) {
-    .admin-borrow-filter-grid {
+    .borrowing-filter-grid {
       grid-template-columns: minmax(0, 5fr) minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr);
     }
 
-    .admin-borrow-filter-search {
+    .borrowing-filter-search {
       grid-column: auto;
     }
 

@@ -44,7 +44,7 @@
     data-initial-asset-id="<?= initialAssetId ?>"
   >
     <a class="skip-link" href="#app-main">ข้ามไปยังเนื้อหาหลัก</a>
-    <button id="theme-toggle" class="theme-toggle" type="button" data-action="theme-toggle"
+    <button id="theme-toggle-login" class="theme-toggle theme-toggle-login" type="button" data-action="theme-toggle"
             aria-label="ธีม: ตามระบบ กดเพื่อเปลี่ยนเป็นโหมดสว่าง"
             title="ธีม: ตามระบบ · เปลี่ยนเป็นโหมดสว่าง">
       <i class="bi bi-circle-half" data-theme-icon aria-hidden="true"></i>
@@ -130,6 +130,7 @@
             <span class="brand-mark" aria-hidden="true"><i class="bi bi-box-seam"></i></span>
             <span class="brand-copy">
               <strong data-app-short-name>CRS Yuem-Kuen</strong>
+              <small data-app-name>CRS Yuem-Kuen System</small>
             </span>
           </a>
         </div>
@@ -206,6 +207,13 @@
                 <small data-session-role>ผู้ใช้งาน</small>
               </span>
             </a>
+            <button id="theme-toggle" class="theme-toggle theme-toggle-topbar" type="button"
+                    data-action="theme-toggle"
+                    aria-label="ธีม: ตามระบบ กดเพื่อเปลี่ยนเป็นโหมดสว่าง"
+                    title="ธีม: ตามระบบ · เปลี่ยนเป็นโหมดสว่าง">
+              <i class="bi bi-circle-half" data-theme-icon aria-hidden="true"></i>
+              <span class="visually-hidden" data-theme-label>ธีมตามระบบ</span>
+            </button>
           </div>
         </header>
 

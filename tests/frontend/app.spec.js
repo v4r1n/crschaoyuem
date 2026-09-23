@@ -141,13 +141,14 @@ test('theme follows the system by default, persists all three states, and is key
   await page.goto('/?view=dashboard');
 
   const root = page.locator('html');
-  const toggle = page.locator('#theme-toggle');
+  const toggle = page.locator('[data-action="theme-toggle"]:visible');
   await expect(root).toHaveAttribute('data-theme-preference', 'system');
   await expect(root).toHaveAttribute('data-bs-theme', 'dark');
   await expect(toggle).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-label', /.+/);
   await expect(toggle).toHaveAttribute('title', /.+/);
   await expect(toggle.locator('[data-theme-icon]')).toHaveClass(/bi-circle-half/);
+  await expect(page.locator('#toast-container')).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('crs-theme'))).toBeNull();
 
   await toggle.focus();
@@ -242,6 +243,7 @@ test('dark theme covers login, navigation, admin forms, tables, modal, alerts, a
 
   await expect(page.locator('html')).toHaveAttribute('data-bs-theme', 'dark');
   await expect(page.locator('#theme-toggle')).toBeVisible();
+  await expect(page.locator('.app-topbar #theme-toggle')).toBeVisible();
   await expect(page.locator('#modal-admin-user')).toBeVisible();
   expect(themed.canvas).toBe('#0b1220');
   expect(themed.surface).toBe('#111827');

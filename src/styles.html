@@ -223,13 +223,11 @@
   }
 
   .theme-toggle {
-    position: fixed;
-    top: max(1rem, env(safe-area-inset-top));
-    right: max(0.75rem, env(safe-area-inset-right));
     z-index: 1095;
     display: inline-grid;
     width: 44px;
     height: 44px;
+    flex: 0 0 44px;
     place-items: center;
     border: 1px solid var(--crs-border);
     border-radius: 50%;
@@ -240,6 +238,20 @@
     cursor: pointer;
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
+  }
+
+  .theme-toggle-login {
+    position: fixed;
+    top: max(1rem, env(safe-area-inset-top));
+    right: max(0.75rem, env(safe-area-inset-right));
+  }
+
+  body:has(#app-shell:not([hidden])) > .theme-toggle-login {
+    display: none;
+  }
+
+  .theme-toggle-topbar {
+    position: relative;
   }
 
   .theme-toggle:hover {
@@ -996,7 +1008,6 @@
     display: flex;
     align-items: center;
     gap: 0.65rem;
-    padding-right: 3.25rem;
   }
 
   .network-status {
@@ -1537,6 +1548,15 @@
   .toast-container {
     z-index: 1090;
     width: min(calc(100% - 1.5rem), 390px);
+    pointer-events: none;
+  }
+
+  .toast-container:empty {
+    display: none;
+  }
+
+  .toast-container .toast {
+    pointer-events: auto;
   }
 
   .app-toast {

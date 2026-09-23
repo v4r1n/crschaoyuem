@@ -80,6 +80,8 @@ test('theme boot is flash-safe and component colors are centralized as design to
   assert.match(index, /prefers-color-scheme: dark/);
   assert.match(index, /data-action="theme-toggle"/);
   assert.match(index, /aria-label=/);
+  assert.match(index, /<header class="app-topbar">[\s\S]*?id="theme-toggle"/,
+    'authenticated theme toggle must be contained by the app topbar');
 
   const controller = read('src/scripts-core.html');
   assert.match(controller, /const THEME_ORDER = \['system', 'light', 'dark'\]/);
@@ -89,6 +91,8 @@ test('theme boot is flash-safe and component colors are centralized as design to
   const styles = read('src/styles.html');
   assert.match(styles, /\[data-bs-theme="dark"\]\s*\{/);
   assert.match(styles, /\.theme-toggle\s*\{/);
+  assert.match(styles, /\.toast-container:empty\s*\{[\s\S]*?display:\s*none/,
+    'empty toast container must not create an overlay at the viewport edge');
   for (const token of ['heading', 'label', 'link', 'muted', 'danger', 'warning', 'success', 'info']) {
     assert.match(styles, new RegExp(`--crs-${token}:`), `${token} color must be a design token`);
   }

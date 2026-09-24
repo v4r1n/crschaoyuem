@@ -31,7 +31,7 @@ CRS Yuem-Kuen System คือระบบเว็บภาษาไทยส�
 
 ## การติดตั้ง
 
-ทำตาม [คู่มือติดตั้งและ Deploy](docs/DEPLOYMENT.md) ซึ่งครอบคลุมการสร้าง Google Sheet/Drive folder, นำไฟล์ runtime 46 ไฟล์เข้า Apps Script, สร้าง Web OAuth Client พร้อม exact Authorized redirect URI, ตั้ง Script Properties, bootstrap Admin, authorize, deploy แบบ `USER_DEPLOYING` + `ANYONE` สำหรับผู้ที่ลงชื่อเข้าใช้แล้ว, ทดสอบ Workspace/Gmail, rollback และดูแลหลังเปิดใช้งาน ห้ามใช้ `ANYONE_ANONYMOUS`
+ทำตาม [คู่มือติดตั้งและ Deploy](docs/DEPLOYMENT.md) ซึ่งครอบคลุมการสร้าง Google Sheet/Drive folder, นำไฟล์ runtime 46 ไฟล์เข้า Apps Script, สร้าง Web OAuth Client พร้อม exact Authorized redirect URI, ตั้ง Script Properties, bootstrap Admin, authorize, deploy Pilot แบบ `USER_DEPLOYING` + `ANYONE_ANONYMOUS` เพื่อให้เปิดหน้า shell ได้ก่อน Google OAuth โดย business RPC ยังต้องผ่าน OAuth/session/Users authorization เสมอ ส่วน Production ใช้ `USER_DEPLOYING` + `ANYONE` และห้ามเปลี่ยนเป็น anonymous, ทดสอบ Workspace/Gmail, rollback และดูแลหลังเปิดใช้งาน
 
 ## สถานะ
 

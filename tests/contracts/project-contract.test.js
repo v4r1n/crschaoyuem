@@ -539,7 +539,12 @@ test('server-side OAuth/OIDC uses a protected callback and bounded opaque applic
   assert.match(oauth, /code_verifier:\s*codeVerifier/);
   assert.match(oauth, /verifyGoogleIdToken_\s*\(\s*idToken\s*,\s*claim\.nonce\s*\)/);
   assert.match(oauth, /CacheService\.getScriptCache\s*\(\)/);
-  assert.match(oauth, /Session\.getTemporaryActiveUserKey\s*\(\)/);
+  assert.doesNotMatch(oauth, /Session\.(?:getTemporaryActiveUserKey|getActiveUser|getEffectiveUser)\s*\(/,
+    'anonymous visitor identity and session binding must not depend on Apps Script user context');
+  assert.match(oauth, /function oauthSessionProofHash_/,
+    'flow and application-session ownership must use a domain-separated browser-held proof hash');
+  assert.match(oauth, /flow\.pollTokenHash, pollTokenHash/,
+    'polling must still require its independent browser-held proof');
   assert.match(oauth, /function requireApplicationSession_\s*\(sessionToken\)/);
   assert.doesNotMatch(oauth, /(?:access_token|id_token|refresh_token|session_token)\s*:/,
     'authorization URLs must not carry tokens');

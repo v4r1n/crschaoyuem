@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - One-time callback Copy acknowledgement so the initiating tab can reliably close the Apps Script popup despite the callback iframe boundary.
 - Shared desktop borrowing-filter grid for Admin and My Borrow so search, status, sort, and submit controls align on one row.
 - Six-digit OAuth confirmation OTP with server-keyed CSPRNG generation, flow-bound hash-only storage, five-minute expiry, five-attempt lockout, replay prevention, callback copy control, and accessible six-field paste-aware input.
+- Anonymous Pilot OAuth binding uses independent browser-held poll/session proofs rather than the empty Apps Script temporary-user key; server-side token, OTP, Users-row, status, domain, role, and business-RPC session checks remain enforced.
 
 - Phase 1 system architecture for a Google Apps Script HTML-service SPA.
 - Migration-friendly Google Sheets schema with stable IDs and append-only history.

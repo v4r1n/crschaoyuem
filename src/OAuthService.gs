@@ -27,7 +27,9 @@ function beginOAuthSignIn(input) {
       'ข้อมูลเริ่มต้นการลงชื่อเข้าใช้ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง', null, false);
 
     var oauthConfig = getGoogleOAuthServerConfig_();
-    var visitorBindingHash = currentVisitorBindingHash_();
+    // The browser's unpredictable session proof is the owner binding for this
+    // flow. Anonymous Web App executions may not have a temporary user key.
+    var sessionProofHash = oauthSessionProofHash_(sessionTokenHash);
     var nowSeconds = Math.floor(Date.now() / 1000);
     var expiresAt = nowSeconds + oauthConfig.flowTtlSeconds;
     var flowId = createOAuthRandomValue_('flow1_');
@@ -39,12 +41,12 @@ function beginOAuthSignIn(input) {
 
     var flowCacheKey = oauthFlowCacheKey_(flowId);
     var callbackCacheKey = oauthCallbackCacheKey_(callbackKey);
-    var visitorIndexKey = oauthVisitorIndexCacheKey_(visitorBindingHash);
+    var ownerIndexKey = oauthSessionProofIndexCacheKey_(sessionProofHash);
     var flowRecord = {
       version: 1,
       flowId: flowId,
       status: 'PENDING',
-      visitorBindingHash: visitorBindingHash,
+      sessionProofHash: sessionProofHash,
       pollTokenHash: pollTokenHash,
       sessionTokenHash: sessionTokenHash,
       callbackCacheKey: callbackCacheKey,
@@ -56,7 +58,7 @@ function beginOAuthSignIn(input) {
     var callbackRecord = {
       version: 1,
       flowCacheKey: flowCacheKey,
-      visitorBindingHash: visitorBindingHash,
+      sessionProofHash: sessionProofHash,
       nonce: nonce,
       codeVerifier: codeVerifier,
       createdAt: nowSeconds,
@@ -65,18 +67,18 @@ function beginOAuthSignIn(input) {
 
     withOAuthLock_(function () {
       var cache = getOAuthScriptCache_();
-      removePreviousVisitorFlow_(cache, visitorIndexKey);
+      removePreviousOwnerFlow_(cache, ownerIndexKey);
       try {
         cache.put(flowCacheKey, JSON.stringify(flowRecord), oauthConfig.flowTtlSeconds);
         cache.put(callbackCacheKey, JSON.stringify(callbackRecord), oauthConfig.flowTtlSeconds);
-        cache.put(visitorIndexKey, JSON.stringify({
+        cache.put(ownerIndexKey, JSON.stringify({
           version: 1,
           flowCacheKey: flowCacheKey,
           callbackCacheKey: callbackCacheKey,
           expiresAt: expiresAt
         }), oauthConfig.flowTtlSeconds);
       } catch (error) {
-        removeOAuthCacheKeysBestEffort_(cache, [flowCacheKey, callbackCacheKey, visitorIndexKey]);
+        removeOAuthCacheKeysBestEffort_(cache, [flowCacheKey, callbackCacheKey, ownerIndexKey]);
         throw new AppError_('AUTH_SERVICE_UNAVAILABLE',
           'ไม่สามารถเริ่มการลงชื่อเข้าใช้ได้ กรุณาลองใหม่อีกครั้ง', null, true);
       }
@@ -99,14 +101,13 @@ function completeOAuthSignIn(flowId, pollToken, handoffCode, sessionToken) {
   return executeSafely_(function () {
     var normalizedFlowId = requireOAuthFlowId_(flowId);
     var normalizedPollToken = requireOAuthPollToken_(pollToken);
-    var visitorBindingHash = currentVisitorBindingHash_();
     var pollTokenHash = sha256Base64Url_(normalizedPollToken);
 
     return withOAuthLock_(function () {
       var cache = getOAuthScriptCache_();
       var flowCacheKey = oauthFlowCacheKey_(normalizedFlowId);
       var flow = readOAuthFlowRecord_(cache, flowCacheKey);
-      assertLiveOAuthFlow_(flow, visitorBindingHash, pollTokenHash);
+      assertLiveOAuthFlow_(flow, pollTokenHash);
 
       if (flow.status === 'PENDING' || flow.status === 'PROCESSING') {
         return { status: 'PENDING', expiresAt: flow.expiresAt };
@@ -374,7 +375,9 @@ function claimOAuthFlow_(callbackKey) {
     assertApp_(callbackRecord && callbackRecord.expiresAt > nowSeconds,
       'UNAUTHENTICATED', 'คำขอลงชื่อเข้าใช้หมดอายุหรือถูกใช้แล้ว กรุณาลองใหม่อีกครั้ง', null, false);
     var flow = readOAuthFlowRecord_(cache, callbackRecord.flowCacheKey);
-    assertApp_(flow && flow.status === 'PENDING' && flow.expiresAt > nowSeconds && flow.redirectUri === getGoogleOAuthServerConfig_().redirectUri,
+    assertApp_(flow && flow.status === 'PENDING' && flow.expiresAt > nowSeconds &&
+      flow.redirectUri === getGoogleOAuthServerConfig_().redirectUri &&
+      secureStringEquals_(flow.sessionProofHash, callbackRecord.sessionProofHash),
     'UNAUTHENTICATED', 'คำขอลงชื่อเข้าใช้หมดอายุหรือถูกใช้แล้ว กรุณาลองใหม่อีกครั้ง', null, false);
     var claimId = createOAuthRandomValue_('claim1_');
     flow.status = 'PROCESSING';
@@ -386,7 +389,7 @@ function claimOAuthFlow_(callbackKey) {
     return {
       flowCacheKey: callbackRecord.flowCacheKey,
       claimId: claimId,
-      visitorBindingHash: flow.visitorBindingHash,
+      sessionProofHash: flow.sessionProofHash,
       nonce: callbackRecord.nonce,
       codeVerifier: callbackRecord.codeVerifier,
       redirectUri: flow.redirectUri,
@@ -417,7 +420,7 @@ function finalizeOAuthFlowSuccess_(claim, identity, user) {
       email: normalizeEmail_(identity.email),
       userId: user.user_id,
       clientId: oauthConfig.clientId,
-      visitorBindingHash: claim.visitorBindingHash,
+      sessionProofHash: claim.sessionProofHash,
       sessionTokenHash: flow.sessionTokenHash,
       issuedAt: nowSeconds,
       identityExpiresAt: identityExpiresAt,
@@ -472,8 +475,7 @@ function requireApplicationSession_(sessionToken) {
   assertApp_(session && session.expiresAt > nowSeconds &&
     secureStringEquals_(session.sessionTokenHash, sessionTokenHash),
   'UNAUTHENTICATED', 'session หมดอายุหรือไม่ถูกต้อง กรุณาลงชื่อเข้าใช้อีกครั้ง', null, false);
-  var visitorBindingHash = currentVisitorBindingHash_();
-  assertApp_(secureStringEquals_(session.visitorBindingHash, visitorBindingHash),
+  assertApp_(secureStringEquals_(session.sessionProofHash, oauthSessionProofHash_(sessionTokenHash)),
     'UNAUTHENTICATED', 'session นี้ไม่ใช่ของบริบทผู้ใช้ปัจจุบัน กรุณาลงชื่อเข้าใช้อีกครั้ง', null, false);
 
   var config = getRuntimeConfig_();
@@ -492,22 +494,11 @@ function requireApplicationSession_(sessionToken) {
   return session;
 }
 
-function currentVisitorBindingHash_() {
-  var temporaryKey = '';
-  try { temporaryKey = String(Session.getTemporaryActiveUserKey() || ''); }
-  catch (error) { temporaryKey = ''; }
-  assertApp_(temporaryKey.length > 0 && temporaryKey.length <= 512 &&
-    !/[\x00-\x1f\x7f]/.test(temporaryKey), 'UNAUTHENTICATED',
-  'ไม่สามารถผูก session กับผู้ใช้ Google ปัจจุบันได้ กรุณาเปิด Web app ใหม่', null, false);
-  return sha256Base64Url_(temporaryKey);
-}
-
-function assertLiveOAuthFlow_(flow, visitorBindingHash, pollTokenHash) {
+function assertLiveOAuthFlow_(flow, pollTokenHash) {
   var nowSeconds = Math.floor(Date.now() / 1000);
   assertApp_(flow && flow.expiresAt > nowSeconds, 'UNAUTHENTICATED',
     'คำขอลงชื่อเข้าใช้หมดอายุแล้ว กรุณาเริ่มใหม่', null, false);
-  assertApp_(secureStringEquals_(flow.visitorBindingHash, visitorBindingHash) &&
-    secureStringEquals_(flow.pollTokenHash, pollTokenHash), 'UNAUTHENTICATED',
+  assertApp_(secureStringEquals_(flow.pollTokenHash, pollTokenHash), 'UNAUTHENTICATED',
   'ไม่สามารถยืนยันคำขอลงชื่อเข้าใช้นี้ได้', null, false);
   assertApp_(['PENDING', 'PROCESSING', 'AWAITING_CONFIRMATION', 'DENIED', 'CONSUMED'].indexOf(flow.status) !== -1,
     'UNAUTHENTICATED', 'สถานะคำขอลงชื่อเข้าใช้ไม่ถูกต้อง', null, false);
@@ -517,7 +508,7 @@ function assertClaimedOAuthFlow_(flow, claim) {
   var nowSeconds = Math.floor(Date.now() / 1000);
   assertApp_(flow && flow.status === 'PROCESSING' && flow.expiresAt > nowSeconds &&
     secureStringEquals_(flow.claimId, claim.claimId) &&
-    secureStringEquals_(flow.visitorBindingHash, claim.visitorBindingHash),
+    secureStringEquals_(flow.sessionProofHash, claim.sessionProofHash),
   'UNAUTHENTICATED', 'คำขอลงชื่อเข้าใช้หมดอายุหรือถูกใช้แล้ว กรุณาลองใหม่อีกครั้ง', null, false);
 }
 
@@ -526,9 +517,10 @@ function readOAuthFlowRecord_(cache, key) {
   if (!record || record.version !== 1 ||
     !OAUTH_FLOW_ID_PATTERN_.test(String(record.flowId || '')) ||
     ['PENDING', 'PROCESSING', 'AWAITING_CONFIRMATION', 'DENIED', 'CONSUMED'].indexOf(record.status) === -1 ||
-    !OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || '')) ||
+    !OAUTH_SECRET_HASH_PATTERN_.test(String(record.sessionProofHash || '')) ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.pollTokenHash || '')) ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.sessionTokenHash || '')) ||
+    !secureStringEquals_(record.sessionProofHash, oauthSessionProofHash_(record.sessionTokenHash)) ||
     typeof record.callbackCacheKey !== 'string' ||
     record.callbackCacheKey.indexOf(OAUTH_CACHE_PREFIX_ + 'callback:') !== 0 ||
     !isGoogleOAuthClientId_(record.clientId) ||
@@ -555,7 +547,7 @@ function readOAuthCallbackRecord_(cache, key) {
   if (!record || record.version !== 1 ||
     typeof record.flowCacheKey !== 'string' ||
     record.flowCacheKey.indexOf(OAUTH_CACHE_PREFIX_ + 'flow:') !== 0 ||
-    !OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || '')) ||
+    !OAUTH_SECRET_HASH_PATTERN_.test(String(record.sessionProofHash || '')) ||
     !OAUTH_NONCE_PATTERN_.test(String(record.nonce || '')) ||
     !OAUTH_PKCE_VERIFIER_PATTERN_.test(String(record.codeVerifier || '')) ||
     !Number.isInteger(record.createdAt) || !Number.isInteger(record.expiresAt) ||
@@ -566,11 +558,17 @@ function readOAuthCallbackRecord_(cache, key) {
 function readOAuthSessionRecord_(cache, key) {
   var record = readOAuthCacheJson_(cache, key);
   if (!record || record.version !== 2 ||
-    !OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || '')) ||
     !OAUTH_SECRET_HASH_PATTERN_.test(String(record.sessionTokenHash || '')) ||
     !Number.isInteger(record.issuedAt) || !Number.isInteger(record.identityExpiresAt) ||
     record.identityExpiresAt <= record.issuedAt || !Number.isInteger(record.expiresAt) ||
     record.expiresAt <= record.issuedAt) return null;
+  if (!record.sessionProofHash && OAUTH_SECRET_HASH_PATTERN_.test(String(record.visitorBindingHash || ''))) {
+    // Existing Pilot sessions were bound to a temporary user key. Keep them
+    // usable until their normal expiry while switching to browser proof binding.
+    record.sessionProofHash = oauthSessionProofHash_(record.sessionTokenHash);
+  }
+  if (!OAUTH_SECRET_HASH_PATTERN_.test(String(record.sessionProofHash || '')) ||
+    !secureStringEquals_(record.sessionProofHash, oauthSessionProofHash_(record.sessionTokenHash))) return null;
   return record;
 }
 
@@ -618,13 +616,13 @@ function withOAuthLock_(callback) {
   finally { lock.releaseLock(); }
 }
 
-function removePreviousVisitorFlow_(cache, visitorIndexKey) {
-  var previous = readOAuthCacheJson_(cache, visitorIndexKey);
+function removePreviousOwnerFlow_(cache, ownerIndexKey) {
+  var previous = readOAuthCacheJson_(cache, ownerIndexKey);
   if (!previous) return;
   removeOAuthCacheKeysBestEffort_(cache, [
     previous.flowCacheKey,
     previous.callbackCacheKey,
-    visitorIndexKey
+    ownerIndexKey
   ]);
 }
 
@@ -773,8 +771,12 @@ function oauthSessionCacheKeyFromHash_(sessionTokenHash) {
   return OAUTH_CACHE_PREFIX_ + 'session:' + sessionTokenHash;
 }
 
-function oauthVisitorIndexCacheKey_(visitorBindingHash) {
-  return OAUTH_CACHE_PREFIX_ + 'visitor:' + visitorBindingHash;
+function oauthSessionProofIndexCacheKey_(sessionProofHash) {
+  return OAUTH_CACHE_PREFIX_ + 'owner:' + sessionProofHash;
+}
+
+function oauthSessionProofHash_(sessionTokenHash) {
+  return sha256Base64Url_('crs-oauth-session-proof-v1|' + String(sessionTokenHash || ''));
 }
 
 function createOAuthRandomValue_(prefix) {
@@ -829,7 +831,7 @@ function hashOAuthOtp_(flowCacheKey, flow, otp) {
   var digest = Utilities.computeHmacSha256Signature([
     'crs-oauth-otp-hash-v1',
     String(flowCacheKey || ''),
-    String(flow && flow.visitorBindingHash || ''),
+    String(flow && flow.sessionProofHash || ''),
     String(flow && flow.pollTokenHash || ''),
     String(flow && flow.sessionTokenHash || ''),
     String(otp || '')

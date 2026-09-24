@@ -28,7 +28,7 @@ test('YRU and Gmail authenticate through code exchange to their own Users row', 
   }
   const sessions = [];
   for (const email of ['lecturer@yru.ac.th', 'borrower@gmail.com']) {
-    const result = h.signInAs(email);
+    const result = h.signInAs(email, {}, {}, { visitorKey: '' });
     expectOk(result.finish.pollResponse);
     sessions.push(h.state.sessionToken);
     const bootstrap = expectOk(h.invoke('getAppBootstrap'));
@@ -38,7 +38,32 @@ test('YRU and Gmail authenticate through code exchange to their own Users row', 
     assert.equal(bootstrap.app.shortName, 'CRS Yuem-Kuen');
   }
   assert.notEqual(sessions[0], sessions[1]);
-  expectError(h.invokeWithToken('getAppBootstrap', sessions[0]), 'UNAUTHENTICATED');
+  assert.equal(expectOk(h.invokeWithToken('getAppBootstrap', sessions[0])).session.email, 'lecturer@yru.ac.th');
+  assert.equal(expectOk(h.invokeWithToken('getAppBootstrap', sessions[1])).session.email, 'borrower@gmail.com');
+  assert.equal(h.state.temporaryUserKeyCalls, 0);
+});
+test('anonymous visitors with no temporary Google user key can complete OAuth with browser-held proofs', () => {
+  const h = harness();
+  h.setVisitorKey('');
+  const start = h.startOAuth();
+  expectOk(start.response);
+
+  const result = h.finishOAuth(start, { email: 'admin@yru.ac.th' });
+  expectOk(result.pollResponse);
+  expectOk(h.invokeWithToken('getDashboard', start.sessionToken));
+  assert.equal(h.state.temporaryUserKeyCalls, 0);
+});
+test('Pilot session migration preserves an unexpired pre-proof session without restoring user-key binding', () => {
+  const h = harness();
+  const { start } = login(h, 'admin@yru.ac.th');
+  const sessionHash = sha256Base64Url(start.sessionToken);
+  const cacheKey = h.context.oauthSessionCacheKeyFromHash_(sessionHash);
+  const session = JSON.parse(h.cache.get(cacheKey));
+  delete session.sessionProofHash;
+  session.visitorBindingHash = 'A'.repeat(43);
+  h.cache.put(cacheKey, JSON.stringify(session), 600);
+
+  expectOk(h.invokeWithToken('getDashboard', start.sessionToken));
 });
 test('authorization URL and token POST use exact redirect, state, nonce and PKCE without leaking credentials', () => {
   const h = harness();

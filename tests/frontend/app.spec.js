@@ -31,6 +31,29 @@ test('user modal routes create independently of stale or injected IDs and keeps 
   expect(create.email).toBe('new@gmail.com');
 });
 
+test('equipment editor scrolls its fields with the mouse while header and actions stay visible', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 650 });
+  await openAuthenticated(page, '/?view=equipment&role=admin', 'equipment');
+  await page.locator('[data-action="add-equipment"]').click();
+  const modal = page.locator('#equipment-editor-modal');
+  await expect(modal).toBeVisible();
+  const body = modal.locator('.modal-body');
+  const before = await body.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+    scrollTop: element.scrollTop,
+  }));
+  expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
+  expect(before.overflowY).toBe('auto');
+  const box = await body.boundingBox();
+  await page.mouse.move(box.x + box.width - 8, box.y + 32);
+  await page.mouse.wheel(0, 700);
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(before.scrollTop);
+  await expect(modal.locator('.modal-header')).toBeInViewport();
+  await expect(modal.locator('.modal-footer')).toBeInViewport();
+});
+
 const ROUTE_SELECTORS = {
   dashboard: '#page-dashboard',
   equipment: '#page-equipment',

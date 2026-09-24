@@ -63,7 +63,7 @@ test('all server, browser, and manifest sources compile', () => {
     'https://www.googleapis.com/auth/userinfo.email',
   ]);
   assert.deepEqual(manifest.webapp, {
-    access: 'ANYONE',
+    access: 'ANYONE_ANONYMOUS',
     executeAs: 'USER_DEPLOYING',
   });
   assert.equal(serverFiles.length, 26);

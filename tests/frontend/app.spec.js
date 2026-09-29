@@ -54,6 +54,40 @@ test('equipment editor scrolls its fields with the mouse while header and action
   await expect(modal.locator('.modal-footer')).toBeInViewport();
 });
 
+test('equipment image drop zone browses and accepts dropped GIF files with a preview', async ({ page }) => {
+  await openAuthenticated(page, '/?view=equipment-detail&id=AST-000001&role=admin', 'equipment-detail');
+  await expect(page.locator('[data-app-version]')).toHaveText('0.1.7');
+  await page.locator('[data-action="upload-image"]').click();
+  const form = page.locator('#equipment-image-form');
+  const zone = form.locator('[data-image-dropzone]');
+  const input = form.locator('#equipment-image-file');
+  const preview = form.locator('[data-image-preview]');
+  await expect(zone).toBeVisible();
+  await expect(zone).toContainText('Browse File');
+  await expect(input).toHaveAttribute('accept', /image\/gif/);
+  const gif = Buffer.from('R0lGODlhAQABAAD/ACwAAAAAAQABAAACAUwAOw==', 'base64');
+  const fileChooser = page.waitForEvent('filechooser');
+  await input.click();
+  await (await fileChooser).setFiles({ name: 'preview.gif', mimeType: 'image/gif', buffer: gif });
+  await expect(preview).toBeVisible();
+  await expect.poll(() => preview.evaluate((image) => image.naturalWidth)).toBe(1);
+  await expect(form.locator('[data-image-placeholder]')).toBeHidden();
+
+  await zone.evaluate((element, bytes) => {
+    const file = new File([new Uint8Array(bytes)], 'dropped.gif', { type: 'image/gif' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    element.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: transfer }));
+    element.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
+  }, [...gif]);
+  await expect.poll(() => input.evaluate((element) => element.files[0].name)).toBe('dropped.gif');
+  await expect(preview).toBeVisible();
+  await form.locator('[data-submit]').click();
+  await expect(form).toBeHidden();
+  const upload = await page.evaluate(() => window.__CRS_TEST__.calls.find((call) => call.method === 'adminUploadEquipmentImage'));
+  expect(upload.args[0].mime_type).toBe('image/gif');
+});
+
 const ROUTE_SELECTORS = {
   dashboard: '#page-dashboard',
   equipment: '#page-equipment',

@@ -113,3 +113,10 @@ The anonymous-login regression is fixed in `OAuthService.gs`: OAuth/session owne
 - On 2026-09-29, local contracts, backend, and Playwright tests passed 99/99 (14 + 46 + 39). Pilot start and callback deployments were both verified as `ANYONE_ANONYMOUS` / `USER_DEPLOYING` before rollout.
 - Source commit `f6a96e8` is pushed to `origin/main`. All 47 runtime files were uploaded; immutable Apps Script version 16 was fetched and compared against local source with no mismatches. Both existing Pilot start and callback deployments now point to version 16; their `ANYONE_ANONYMOUS` / `USER_DEPLOYING` settings were confirmed after the update, and both `/exec` endpoints returned HTTP 200. Production was not changed.
 - Next phase: complete real Workspace/Gmail login and UI acceptance on Pilot, including callback confirmation and Keyboard Shortcuts. HTTP 200 and local mocks do not prove a successful authenticated session. Production promotion remains separate and requires approval.
+
+## Version 0.1.7 image upload release verification
+
+- The previous immutable Apps Script v16 is designated baseline release `0.1.6`; its existing snapshot cannot be relabeled retroactively. The next release sets `APP_VERSION` to `0.1.7` in source and ignores any stale Script Property override so the Sidebar shows the source release version.
+- The equipment image modal now uses one accessible drop zone in the former preview area for native browse and drag/drop. GIF preview and upload MIME are supported alongside JPEG, PNG, and WebP; the backend validates GIF87a/GIF89a headers and still enforces the configured size limit.
+- On 2026-09-29, local contracts, backend, and Playwright suites passed 102/102 (15 + 47 + 40), including native file chooser, dropped GIF preview, upload payload, and spoofed-MIME rejection.
+- Next phase: publish this source as Apps Script v17 / app `0.1.7` on both existing Pilot entrypoints, verify their access remains `ANYONE_ANONYMOUS` / `USER_DEPLOYING`, then run real Workspace/Gmail sign-in and image upload acceptance. Production promotion remains separate.

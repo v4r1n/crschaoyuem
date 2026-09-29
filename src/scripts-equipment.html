@@ -456,11 +456,17 @@
             '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button></div>' +
           '<div class="modal-body"><input type="hidden" name="asset_id"><input type="hidden" name="expected_version">' +
             '<p class="text-body-secondary">อุปกรณ์: <strong data-equipment-name></strong></p>' +
-            '<div class="ratio ratio-4x3 bg-body-tertiary rounded overflow-hidden mb-3"><div data-image-placeholder class="d-flex align-items-center justify-content-center text-body-secondary">' +
-              '<i class="bi bi-image fs-1" aria-hidden="true"></i></div><img data-image-preview class="w-100 h-100 object-fit-contain d-none" alt="ตัวอย่างภาพที่เลือก"></div>' +
             '<label class="form-label" for="equipment-image-file">ไฟล์ภาพ <span class="text-danger">*</span></label>' +
-            '<input id="equipment-image-file" name="image" type="file" class="form-control" accept="image/jpeg,image/png,image/webp" required>' +
-            '<div class="form-text" data-image-limit>รองรับ JPEG, PNG และ WebP</div></div>' +
+            '<div class="equipment-image-dropzone ratio ratio-4x3 mb-3" data-image-dropzone>' +
+              '<div data-image-placeholder class="equipment-image-placeholder text-body-secondary">' +
+                '<i class="bi bi-cloud-arrow-up fs-1" aria-hidden="true"></i>' +
+                '<strong>ลากไฟล์ภาพมาวาง หรือ Browse File</strong>' +
+                '<span>JPEG, PNG, WebP หรือ GIF</span></div>' +
+              '<img data-image-preview class="w-100 h-100 object-fit-contain d-none" alt="ตัวอย่างภาพที่เลือก">' +
+              '<span class="equipment-image-drop-hint" aria-hidden="true">วางไฟล์ภาพที่นี่</span>' +
+              '<input id="equipment-image-file" name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif" ' +
+                'aria-label="ลากไฟล์ภาพมาวางหรือกดเพื่อเลือกไฟล์" aria-describedby="equipment-image-limit" required></div>' +
+            '<div id="equipment-image-limit" class="form-text" data-image-limit>รองรับ JPEG, PNG, WebP และ GIF</div></div>' +
           '<div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">ยกเลิก</button>' +
             '<button type="submit" class="btn btn-primary" data-submit><i class="bi bi-cloud-arrow-up me-1" aria-hidden="true"></i>อัปโหลด</button></div>' +
         '</form></div></div></div>';
@@ -758,10 +764,11 @@
     form.classList.remove('was-validated');
     CRS.clearFieldErrors(form);
     revokeImagePreview();
+    CRS.$('[data-image-dropzone]', form).classList.remove('is-dragover');
     setFormValue(form, 'asset_id', record.asset_id);
     setFormValue(form, 'expected_version', record.row_version);
     CRS.setText(CRS.$('[data-equipment-name]', form), record.name + ' (' + record.asset_id + ')');
-    CRS.setText(CRS.$('[data-image-limit]', form), 'รองรับ JPEG, PNG และ WebP ขนาดไม่เกิน ' +
+    CRS.setText(CRS.$('[data-image-limit]', form), 'รองรับ JPEG, PNG, WebP และ GIF ขนาดไม่เกิน ' +
       Math.ceil(imageSizeLimit() / (1024 * 1024)) + ' MB');
     setVisible(CRS.$('[data-image-preview]', form), false);
     setVisible(CRS.$('[data-image-placeholder]', form), true);
@@ -778,9 +785,9 @@
   }
 
   function validateImageFile(file) {
-    var allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    var allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (!file || allowed.indexOf(file.type) === -1) {
-      throw new Error('กรุณาเลือกไฟล์ JPEG, PNG หรือ WebP');
+      throw new Error('กรุณาเลือกไฟล์ JPEG, PNG, WebP หรือ GIF');
     }
     if (file.size <= 0 || file.size > imageSizeLimit()) {
       throw new Error('ไฟล์ภาพต้องมีขนาดไม่เกิน ' +
@@ -806,9 +813,41 @@
       setVisible(CRS.$('[data-image-placeholder]', form), false);
       event.currentTarget.setCustomValidity('');
     } catch (error) {
+      setVisible(CRS.$('[data-image-preview]', form), false);
+      setVisible(CRS.$('[data-image-placeholder]', form), true);
       event.currentTarget.setCustomValidity(error.message);
       event.currentTarget.reportValidity();
     }
+  }
+
+  function bindImageDropzone(form) {
+    var zone = CRS.$('[data-image-dropzone]', form);
+    var input = form.elements.namedItem('image');
+    var dragDepth = 0;
+    zone.addEventListener('dragenter', function (event) {
+      event.preventDefault();
+      dragDepth += 1;
+      zone.classList.add('is-dragover');
+    });
+    zone.addEventListener('dragover', function (event) {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    });
+    zone.addEventListener('dragleave', function (event) {
+      event.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (!dragDepth) zone.classList.remove('is-dragover');
+    });
+    zone.addEventListener('drop', function (event) {
+      event.preventDefault();
+      dragDepth = 0;
+      zone.classList.remove('is-dragover');
+      if (!event.dataTransfer || !event.dataTransfer.files.length) return;
+      var files = new DataTransfer();
+      files.items.add(event.dataTransfer.files[0]);
+      input.files = files.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
   }
 
   async function submitEquipmentImage(event) {
@@ -861,6 +900,7 @@
     editorForm.addEventListener('submit', submitEquipmentEditor);
     statusForm.addEventListener('submit', submitStatusChange);
     imageForm.addEventListener('submit', submitEquipmentImage);
+    bindImageDropzone(imageForm);
     editorForm.addEventListener('click', function (event) {
       var add = event.target.closest('[data-action="add-included-item"]');
       if (add) {

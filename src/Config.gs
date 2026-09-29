@@ -1,11 +1,11 @@
 /**
  * Central deployment configuration.
- * Script Properties with the same names override these values.
+ * Script Properties override deployment settings; the app release version is source-controlled.
  */
 var CONFIG = Object.freeze({
   APP_NAME: 'CRS Yuem-Kuen System',
   APP_SHORT_NAME: 'CRS Yuem-Kuen',
-  APP_VERSION: '0.2.0',
+  APP_VERSION: '0.1.7',
   SPREADSHEET_ID: '',
   DRIVE_FOLDER_ID: '',
   WEB_APP_URL: '',
@@ -39,7 +39,7 @@ function getRuntimeConfig_() {
   return {
     APP_NAME: valueOrDefault_(properties.APP_NAME, CONFIG.APP_NAME),
     APP_SHORT_NAME: valueOrDefault_(properties.APP_SHORT_NAME, CONFIG.APP_SHORT_NAME),
-    APP_VERSION: valueOrDefault_(properties.APP_VERSION, CONFIG.APP_VERSION),
+    APP_VERSION: CONFIG.APP_VERSION,
     SPREADSHEET_ID: valueOrDefault_(properties.SPREADSHEET_ID, CONFIG.SPREADSHEET_ID),
     DRIVE_FOLDER_ID: valueOrDefault_(properties.DRIVE_FOLDER_ID, CONFIG.DRIVE_FOLDER_ID),
     WEB_APP_URL: valueOrDefault_(properties.WEB_APP_URL, CONFIG.WEB_APP_URL),

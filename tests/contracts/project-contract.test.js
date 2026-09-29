@@ -480,6 +480,18 @@ test('canonical CRS Yuem-Kuen branding is consistent across runtime and manifest
     /CRS (?:Equipment Borrowing System|Equipment|Chao-Yuem|Yuam-Kuen)|Equipment Center/);
 });
 
+test('displayed app version is source-controlled and matches the package release', () => {
+  const config = read('src/Config.gs');
+  const manifest = JSON.parse(read('package.json'));
+  const lock = JSON.parse(read('package-lock.json'));
+  assert.equal(manifest.version, '0.1.7');
+  assert.equal(lock.version, manifest.version);
+  assert.equal(lock.packages[''].version, manifest.version);
+  assert.match(config, /APP_VERSION:\s*'0\.1\.7'/);
+  assert.match(config, /APP_VERSION:\s*CONFIG\.APP_VERSION/);
+  assert.doesNotMatch(config, /APP_VERSION:\s*valueOrDefault_\(properties\.APP_VERSION/);
+});
+
 test('server-side OAuth/OIDC uses a protected callback and bounded opaque application session', () => {
   const index = read('src/index.html');
   const api = read('src/scripts-api.html');

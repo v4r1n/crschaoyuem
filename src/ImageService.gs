@@ -1,7 +1,8 @@
 var IMAGE_MIME_TYPES = Object.freeze({
   'image/jpeg': 'jpg',
   'image/png': 'png',
-  'image/webp': 'webp'
+  'image/webp': 'webp',
+  'image/gif': 'gif'
 });
 
 function uploadEquipmentImage_(input, actor) {
@@ -10,8 +11,8 @@ function uploadEquipmentImage_(input, actor) {
   var commandId = requireCommandId_(input.command_id);
   var mimeType = normalizeWhitespace_(input.mime_type).toLowerCase();
   assertApp_(IMAGE_MIME_TYPES[mimeType], 'VALIDATION_FAILED',
-    'รองรับเฉพาะไฟล์ภาพ JPEG, PNG หรือ WebP', {
-      fieldErrors: fieldError_('image', 'กรุณาเลือกไฟล์ JPEG, PNG หรือ WebP')
+    'รองรับเฉพาะไฟล์ภาพ JPEG, PNG, WebP หรือ GIF', {
+      fieldErrors: fieldError_('image', 'กรุณาเลือกไฟล์ JPEG, PNG, WebP หรือ GIF')
     }, false);
   var config = getRuntimeConfig_();
   var pendingOperation = findRecordById_(SHEETS.OPERATIONS, 'operation_id', commandId);
@@ -178,6 +179,10 @@ function assertImageSignature_(bytes, mimeType) {
     matches = bytes.length >= 12 &&
       String.fromCharCode(byteAt(0), byteAt(1), byteAt(2), byteAt(3)) === 'RIFF' &&
       String.fromCharCode(byteAt(8), byteAt(9), byteAt(10), byteAt(11)) === 'WEBP';
+  } else if (mimeType === 'image/gif') {
+    matches = bytes.length >= 6 &&
+      ['GIF87a', 'GIF89a'].indexOf(String.fromCharCode(
+        byteAt(0), byteAt(1), byteAt(2), byteAt(3), byteAt(4), byteAt(5))) !== -1;
   }
   assertApp_(matches, 'VALIDATION_FAILED', 'เนื้อหาไฟล์ไม่ตรงกับชนิดภาพ', {
     fieldErrors: fieldError_('image', 'ไฟล์ภาพเสียหายหรือเปลี่ยนนามสกุลไม่ถูกต้อง')

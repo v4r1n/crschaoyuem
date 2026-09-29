@@ -83,6 +83,7 @@ const SOURCE_FILES = [
   'Auth.gs',
   'CategoryService.gs',
   'EquipmentService.gs',
+  'ImageService.gs',
   'BorrowService.gs',
   'DashboardService.gs',
   'UserService.gs',

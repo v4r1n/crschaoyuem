@@ -1,6 +1,8 @@
 # คู่มือติดตั้ง Deploy และส่งมอบระบบ
 
-คู่มือนี้ใช้สำหรับนำ CRS Yuem-Kuen System รุ่น `0.2.0` ไปติดตั้งบน Google Workspace จริง ตั้งแต่สร้างทรัพยากรจนถึงตรวจรับ Workspace/Gmail User/Admin และดูแลหลังเปิดใช้งาน ขั้นตอนทั้งหมดใช้บริการของ Google และไม่ต้องมี VPS หรือฐานข้อมูลแยก
+คู่มือนี้ใช้สำหรับนำ CRS Yuem-Kuen System รุ่น `0.1.7` ไปติดตั้งบน Google Workspace จริง ตั้งแต่สร้างทรัพยากรจนถึงตรวจรับ Workspace/Gmail User/Admin และดูแลหลังเปิดใช้งาน ขั้นตอนทั้งหมดใช้บริการของ Google และไม่ต้องมี VPS หรือฐานข้อมูลแยก
+
+เลข Apps Script version เป็นเลข snapshot ของ Google แยกจากเลขเวอร์ชันแอปที่แสดงใน Sidebar. กำหนด baseline v16 เป็น release `0.1.6`; release ถัดไปบน Apps Script v17 ใช้ `0.1.7`. Snapshot v16 แก้ย้อนหลังไม่ได้และเดิมอาจยังแสดง `0.2.0`; อย่าอ้างว่า UI ของ v16 ถูกเปลี่ยนแล้ว. ต่อจากนี้ทุกครั้งที่สร้าง Apps Script version ใหม่ให้เพิ่มเลข patch ของแอปใน `src/Config.gs`, `package.json` และ `package-lock.json` ก่อนทดสอบและ deploy; บันทึกคู่เลขทั้งสองใน change record. `APP_VERSION` เป็นค่าจาก source เท่านั้น แม้มี Script Property ชื่อนี้ก็จะไม่ override เวอร์ชันแอป.
 
 > สถานะของ repository เป็น source ที่ผ่านการทดสอบในเครื่อง ไม่ใช่หลักฐานว่าระบบถูก deploy ในโดเมนขององค์กรแล้ว ผู้รับผิดชอบ deployment ต้องทำรายการใน [Deployment Acceptance Matrix](../tests/MANUAL_ACCEPTANCE.md) ให้ผ่านก่อนเปิดใช้งานจริง
 
@@ -222,7 +224,6 @@ Schema v3 ยังคงใช้ verified email เป็น authorization key
 
 | Property | ค่าเริ่มต้น | ช่วง/ข้อกำหนด |
 |---|---:|---|
-| `APP_VERSION` | `0.2.0` | ควรใช้ค่าจาก source และเปลี่ยนตาม release process เดียวกัน |
 | `DEFAULT_PAGE_SIZE` | `24` | จำนวนเต็ม 1–100 และจะไม่เกิน `MAX_PAGE_SIZE` |
 | `MAX_PAGE_SIZE` | `100` | จำนวนเต็ม 1–100 |
 | `CACHE_TTL_SECONDS` | `120` | จำนวนเต็ม 30–21,600 วินาที |
@@ -277,7 +278,7 @@ https://www.googleapis.com/auth/script.external_request
 
 1. กด **Deploy > New deployment**
 2. ที่ **Select type** เลือก **Web app**
-3. Description ใช้ข้อความที่ตรวจย้อนหลังได้ เช่น `v0.2.0 external identity rollout`
+3. Description ใช้ข้อความที่ตรวจย้อนหลังได้ เช่น `v0.1.7 equipment image drop zone`
 4. ตั้ง **Execute as** เป็น **Me** หรือบัญชีผู้ deploy (`USER_DEPLOYING`)
 5. ตั้ง **Who has access** เป็น **Anyone** (`ANYONE`) ซึ่งใน Apps Script หมายถึง Google Account ที่ลงชื่อเข้าใช้แล้ว ตรวจค่าจาก manifest/deployment record ว่าไม่ใช่ `ANYONE_ANONYMOUS`
 6. กด **Deploy** และคัดลอก Web app URL ที่ลงท้ายด้วย `/exec`

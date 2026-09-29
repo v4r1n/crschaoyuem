@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Equipment image uploader uses a keyboard-accessible drag-and-drop/browse zone with an in-place preview and accepts GIF files after server-side signature validation.
+- Source-controlled app version is `0.1.7` for the next Apps Script release; the displayed version no longer depends on a Script Property override.
 - Equipment and My Borrow search inputs now match History search sizing and four-corner radius; equipment filters align on desktop.
 
 ### Added

@@ -67,7 +67,7 @@ test('all server, browser, and manifest sources compile', () => {
     executeAs: 'USER_DEPLOYING',
   });
   assert.equal(serverFiles.length, 26);
-  assert.equal(browserFiles.length, 9);
+  assert.equal(browserFiles.length, 10);
 });
 
 test('theme boot is flash-safe and component colors are centralized as design tokens', () => {
@@ -115,7 +115,7 @@ test('deployment runbook covers every runtime file, config key, and requested st
   const runtimeFiles = fs.readdirSync(SRC)
     .filter((file) => /\.(?:gs|html|json)$/.test(file))
     .sort();
-  assert.equal(runtimeFiles.length, 46);
+  assert.equal(runtimeFiles.length, 47);
   for (const file of runtimeFiles) {
     const escapedFile = file.replaceAll('.', '\\.');
     assert.match(guide, new RegExp(`\\b${escapedFile}\\b`),
@@ -471,7 +471,7 @@ test('canonical CRS Yuem-Kuen branding is consistent across runtime and manifest
   assert.match(config, /APP_SHORT_NAME:\s*'CRS Yuem-Kuen'/);
   assert.match(api, /shortName:\s*config\.APP_SHORT_NAME/);
   assert.match(index, /data-app-short-name>CRS Yuem-Kuen</);
-  assert.match(index, /data-app-name>CRS Yuem-Kuen System</);
+  assert.doesNotMatch(index, /data-app-name/);
   assert.match(admin, /CRS Yuem-Kuen System/);
   assert.match(qr, /fillText\('CRS Yuem-Kuen'/);
   assert.equal(packageManifest.name, 'crs-yuem-kuen-system');

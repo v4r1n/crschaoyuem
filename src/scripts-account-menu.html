@@ -1,0 +1,424 @@
+<script>
+(function (global) {
+  'use strict';
+
+  const CRS = global.CRS;
+  const main = document.getElementById('account-menu-panel');
+  const submenus = {
+    identity: document.getElementById('account-identity-menu'),
+    help: document.getElementById('account-help-menu')
+  };
+  // TODO: Configure verified HTTPS destinations in bootstrap.app.helpLinks or CRS_HELP_LINKS.
+  const HELP_LINKS = Object.freeze({
+    helpCenter: '',
+    releaseNotes: '',
+    userGuide: '',
+    terms: '',
+    privacyPolicy: ''
+  });
+  const overlay = document.getElementById('account-shortcuts-overlay');
+  let activeTrigger = null;
+  let activeSubmenu = '';
+  let suppressHelpFocus = false;
+  let shortcutReturnFocus = null;
+  let previousBodyOverflow = '';
+  let previousBodyPadding = '';
+  let recordingButton = null;
+  let recordingOriginalText = '';
+  let submenuHoverCloseTimer = null;
+  let submenuOpenedByPointer = false;
+
+  function clearHoverClose() {
+    if (submenuHoverCloseTimer !== null) global.clearTimeout(submenuHoverCloseTimer);
+    submenuHoverCloseTimer = null;
+  }
+
+  function scheduleHoverClose() {
+    if (!submenuOpenedByPointer || !activeSubmenu) return;
+    clearHoverClose();
+    submenuHoverCloseTimer = global.setTimeout(function () {
+      submenuHoverCloseTimer = null;
+      const parent = document.querySelector('[data-account-submenu="' + activeSubmenu + '"]');
+      const submenu = submenus[activeSubmenu];
+      if (!parent.matches(':hover') && !submenu.matches(':hover')) closeSubmenu(false);
+    }, 100);
+  }
+
+  function isMobile() {
+    return global.innerWidth < 992;
+  }
+
+  function clamp(value, minimum, maximum) {
+    return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
+  }
+
+  function enabledItems(menu) {
+    return Array.prototype.filter.call(menu.querySelectorAll('[role="menuitem"]'), function (item) {
+      return !item.hidden && !item.disabled && item.getAttribute('aria-disabled') !== 'true' &&
+        item.getClientRects().length > 0;
+    });
+  }
+
+  function positionMenus() {
+    if (main.hidden || !activeTrigger) return;
+    if (isMobile()) return;
+    const margin = 8;
+    const trigger = activeTrigger.getBoundingClientRect();
+    const mainRect = main.getBoundingClientRect();
+    main.style.left = clamp(trigger.left, margin, global.innerWidth - mainRect.width - margin) + 'px';
+    main.style.top = clamp(trigger.top - mainRect.height - margin, margin,
+      global.innerHeight - mainRect.height - margin) + 'px';
+
+    if (!activeSubmenu) return;
+    const submenu = submenus[activeSubmenu];
+    const parent = document.querySelector('[data-account-submenu="' + activeSubmenu + '"]');
+    const menuRect = main.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const right = menuRect.right + margin;
+    const flipLeft = right + submenuRect.width > global.innerWidth - margin;
+    submenu.dataset.side = flipLeft ? 'left' : 'right';
+    submenu.style.left = clamp(flipLeft ? menuRect.left - submenuRect.width - margin : right,
+      margin, global.innerWidth - submenuRect.width - margin) + 'px';
+    submenu.style.top = clamp(parentRect.top, margin,
+      global.innerHeight - submenuRect.height - margin) + 'px';
+  }
+
+  function syncTriggers() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-action="account-menu-toggle"]'), function (trigger) {
+      const open = !main.hidden && trigger === activeTrigger;
+      trigger.classList.toggle('is-active', open);
+      trigger.setAttribute('aria-expanded', String(open));
+      trigger.setAttribute('aria-label', open ? 'ปิดเมนูบัญชี' : 'เปิดเมนูบัญชี');
+    });
+  }
+
+  function closeSubmenu(returnFocus) {
+    clearHoverClose();
+    if (!activeSubmenu) return;
+    const parent = document.querySelector('[data-account-submenu="' + activeSubmenu + '"]');
+    submenus[activeSubmenu].hidden = true;
+    if (parent) parent.setAttribute('aria-expanded', 'false');
+    activeSubmenu = '';
+    submenuOpenedByPointer = false;
+    if (returnFocus && parent) {
+      suppressHelpFocus = true;
+      parent.focus();
+      suppressHelpFocus = false;
+    }
+  }
+
+  function closeMain(returnFocus) {
+    closeSubmenu(false);
+    main.hidden = true;
+    const trigger = activeTrigger;
+    activeTrigger = null;
+    syncTriggers();
+    if (returnFocus && trigger && document.contains(trigger)) trigger.focus();
+  }
+
+  function configuredHelpLinks() {
+    const app = CRS.state.bootstrap && CRS.state.bootstrap.app;
+    return (app && app.helpLinks) || global.CRS_HELP_LINKS || HELP_LINKS;
+  }
+
+  function updateHelpLinks() {
+    const links = configuredHelpLinks();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-help-link]'), function (item) {
+      const configured = links[item.dataset.helpLink];
+      let safeUrl = '';
+      try {
+        const url = new URL(String(configured || ''));
+        if (url.protocol === 'https:') safeUrl = url.href;
+      } catch (error) { /* Unconfigured help links remain unavailable. */ }
+      if (safeUrl) {
+        item.href = safeUrl;
+        item.target = '_blank';
+        item.rel = 'noopener noreferrer';
+        item.removeAttribute('aria-disabled');
+        item.removeAttribute('tabindex');
+        item.removeAttribute('title');
+      } else {
+        item.removeAttribute('href');
+        item.removeAttribute('target');
+        item.removeAttribute('rel');
+        item.setAttribute('aria-disabled', 'true');
+        item.setAttribute('tabindex', '-1');
+        item.setAttribute('title', 'TODO: ยังไม่มี URL ที่กำหนด');
+      }
+    });
+  }
+
+  function openMain(trigger) {
+    if (!main.hidden && activeTrigger === trigger) {
+      closeMain(true);
+      return;
+    }
+    closeSubmenu(false);
+    activeTrigger = trigger;
+    updateHelpLinks();
+    main.hidden = false;
+    syncTriggers();
+    positionMenus();
+    document.getElementById('account-menu-header').focus();
+  }
+
+  function openSubmenu(name, focusFirst, byPointer) {
+    if (main.hidden || !submenus[name]) return;
+    if (activeSubmenu && activeSubmenu !== name) closeSubmenu(false);
+    clearHoverClose();
+    activeSubmenu = name;
+    submenuOpenedByPointer = Boolean(byPointer);
+    const submenu = submenus[name];
+    const parent = document.querySelector('[data-account-submenu="' + name + '"]');
+    submenu.hidden = false;
+    parent.setAttribute('aria-expanded', 'true');
+    positionMenus();
+    if (focusFirst) {
+      const first = enabledItems(submenu)[0];
+      if (first) first.focus();
+      else {
+        submenu.setAttribute('tabindex', '-1');
+        submenu.focus();
+      }
+    }
+  }
+
+  function closeShortcuts() {
+    if (overlay.hidden) return;
+    stopRecording();
+    overlay.hidden = true;
+    document.body.style.overflow = previousBodyOverflow;
+    document.body.style.paddingRight = previousBodyPadding;
+    if (shortcutReturnFocus && document.contains(shortcutReturnFocus)) shortcutReturnFocus.focus();
+    shortcutReturnFocus = null;
+  }
+
+  function openShortcuts(trigger) {
+    shortcutReturnFocus = trigger;
+    previousBodyOverflow = document.body.style.overflow;
+    previousBodyPadding = document.body.style.paddingRight;
+    const scrollbar = global.innerWidth - document.documentElement.clientWidth;
+    if (scrollbar > 0) {
+      const existingPadding = parseFloat(global.getComputedStyle(document.body).paddingRight) || 0;
+      document.body.style.paddingRight = existingPadding + scrollbar + 'px';
+    }
+    document.body.style.overflow = 'hidden';
+    document.getElementById('sidebar-shortcut-enabled').setAttribute('aria-checked', String(CRS.sidebarShortcut.enabled()));
+    document.querySelector('[data-shortcut-key="sidebar"]').textContent = CRS.sidebarShortcut.label();
+    document.getElementById('account-shortcut-status').textContent = '';
+    overlay.hidden = false;
+    overlay.querySelector('[data-account-shortcuts-close]').focus();
+  }
+
+  CRS.accountMenu = Object.freeze({ openShortcuts: openShortcuts });
+
+  function stopRecording() {
+    if (!recordingButton) return;
+    recordingButton.textContent = recordingOriginalText;
+    recordingButton.removeAttribute('aria-pressed');
+    recordingButton = null;
+    recordingOriginalText = '';
+  }
+
+  function startRecording(button) {
+    if (button.dataset.shortcutKey !== 'sidebar') return;
+    stopRecording();
+    recordingButton = button;
+    recordingOriginalText = button.textContent;
+    button.textContent = 'Press Key sequence';
+    button.setAttribute('aria-pressed', 'true');
+    document.getElementById('account-shortcut-status').textContent =
+      'กด Ctrl, Alt หรือ Meta ร่วมกับตัวอักษรหรือตัวเลข · Esc เพื่อยกเลิก';
+    button.focus();
+  }
+
+  function handleRecordingKey(event) {
+    if (!recordingButton || overlay.hidden || event.repeat) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (['Control', 'Shift', 'Alt', 'Meta'].indexOf(event.key) !== -1) return;
+    if (event.key === 'Escape') {
+      stopRecording();
+      document.getElementById('account-shortcut-status').textContent = 'ยกเลิกการเปลี่ยนคีย์ลัด';
+      return;
+    }
+    const binding = {
+      ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey,
+      meta: event.metaKey, code: event.code
+    };
+    if (!CRS.sidebarShortcut.setBinding(binding)) {
+      document.getElementById('account-shortcut-status').textContent =
+        'โปรดกด Ctrl, Alt หรือ Meta ร่วมกับตัวอักษรหรือตัวเลข';
+      return;
+    }
+    stopRecording();
+    document.querySelector('[data-shortcut-key="sidebar"]').textContent = CRS.sidebarShortcut.label();
+    document.getElementById('account-shortcut-status').textContent = 'บันทึกคีย์ลัด Sidebar แล้ว';
+  }
+
+  function handleCommand(command, source) {
+    if (command === 'shortcuts') {
+      openShortcuts(source);
+      return;
+    }
+    if (command === 'logout' || command === 'switch') {
+      closeMain(false);
+      // The existing sign-out flow returns to Google sign-in, where a different account can be chosen.
+      if (CRS.auth && typeof CRS.auth.signOut === 'function') CRS.auth.signOut();
+    }
+  }
+
+  function handleMenuKey(event) {
+    if (!overlay.hidden) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeShortcuts();
+      } else if (event.key === 'Tab') {
+        const focusables = Array.prototype.filter.call(overlay.querySelectorAll('button:not(:disabled), input:not(:disabled)'),
+          function (item) { return item.getClientRects().length > 0; });
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      return;
+    }
+
+    const trigger = event.target.closest && event.target.closest('[data-action="account-menu-toggle"]');
+    if (trigger && event.key === ' ') {
+      event.preventDefault();
+      trigger.click();
+      return;
+    }
+    if (main.hidden) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (activeSubmenu) closeSubmenu(true);
+      else closeMain(true);
+      return;
+    }
+    if (event.key === 'ArrowLeft' && activeSubmenu) {
+      event.preventDefault();
+      closeSubmenu(true);
+      return;
+    }
+    const parent = event.target.closest && event.target.closest('[data-account-submenu]');
+    if (event.key === 'ArrowRight' && parent) {
+      event.preventDefault();
+      openSubmenu(parent.dataset.accountSubmenu, true);
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
+    const panel = activeSubmenu && submenus[activeSubmenu].contains(document.activeElement)
+      ? submenus[activeSubmenu] : main;
+    if (!panel.contains(document.activeElement)) return;
+    const items = enabledItems(panel);
+    if (!items.length) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 :
+      (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  }
+
+  document.addEventListener('click', function (event) {
+    const trigger = event.target.closest('[data-action="account-menu-toggle"]');
+    if (trigger) {
+      event.preventDefault();
+      openMain(trigger);
+      return;
+    }
+    if (!overlay.hidden) {
+      const shortcutKey = event.target.closest('[data-shortcut-key]');
+      if (shortcutKey) {
+        startRecording(shortcutKey);
+        return;
+      }
+      stopRecording();
+      if (event.target === overlay || event.target.closest('[data-account-shortcuts-close]')) closeShortcuts();
+      const restore = event.target.closest('[data-account-shortcuts-restore]');
+      if (restore) {
+        CRS.sidebarShortcut.setEnabled(true);
+        CRS.sidebarShortcut.resetBinding();
+        document.getElementById('sidebar-shortcut-enabled').setAttribute('aria-checked', 'true');
+        document.querySelector('[data-shortcut-key="sidebar"]').textContent = CRS.sidebarShortcut.label();
+        document.getElementById('account-shortcut-status').textContent = 'คืนค่าเริ่มต้นแล้ว';
+      }
+      return;
+    }
+    if (main.hidden) return;
+    const submenuTrigger = event.target.closest('[data-account-submenu]');
+    if (submenuTrigger) {
+      const name = submenuTrigger.dataset.accountSubmenu;
+      if (activeSubmenu === name && !submenuOpenedByPointer) closeSubmenu(true);
+      else openSubmenu(name, true);
+      return;
+    }
+    if (event.target.closest('[data-account-back]')) {
+      closeSubmenu(true);
+      return;
+    }
+    const route = event.target.closest('[data-account-route]');
+    if (route) {
+      closeMain(false);
+      CRS.navigate(route.dataset.accountRoute, {});
+      return;
+    }
+    const command = event.target.closest('[data-account-command]');
+    if (command) {
+      handleCommand(command.dataset.accountCommand, command);
+      return;
+    }
+    const helpLink = event.target.closest('[data-help-link]');
+    if (helpLink) {
+      if (helpLink.getAttribute('aria-disabled') === 'true') event.preventDefault();
+      else closeMain(false);
+      return;
+    }
+    if (!main.contains(event.target) && !Object.values(submenus).some(function (menu) { return menu.contains(event.target); })) {
+      closeMain(false);
+    }
+  });
+
+  Object.keys(submenus).forEach(function (name) {
+    const parent = document.querySelector('[data-account-submenu="' + name + '"]');
+    parent.addEventListener('mouseenter', function () {
+      if (!main.hidden && !isMobile()) openSubmenu(name, false, true);
+    });
+    parent.addEventListener('mouseleave', scheduleHoverClose);
+    submenus[name].addEventListener('mouseenter', clearHoverClose);
+    submenus[name].addEventListener('mouseleave', scheduleHoverClose);
+  });
+  document.getElementById('account-help-trigger').addEventListener('focus', function () {
+    if (!main.hidden && !isMobile() && !suppressHelpFocus &&
+      document.getElementById('account-help-trigger').matches(':focus-visible')) {
+      openSubmenu('help', false);
+    }
+  });
+  document.addEventListener('keydown', handleMenuKey);
+  document.addEventListener('keydown', handleRecordingKey, true);
+  document.getElementById('sidebar-shortcut-enabled').addEventListener('click', function (event) {
+    const enabled = event.currentTarget.getAttribute('aria-checked') !== 'true';
+    CRS.sidebarShortcut.setEnabled(enabled);
+    event.currentTarget.setAttribute('aria-checked', String(enabled));
+  });
+  document.addEventListener('focusin', function (event) {
+    if (main.hidden || !overlay.hidden) return;
+    if (main.contains(event.target) || (activeTrigger && activeTrigger.contains(event.target)) ||
+      Object.values(submenus).some(function (menu) { return menu.contains(event.target); })) return;
+    closeMain(false);
+  });
+  global.addEventListener('resize', positionMenus);
+  global.addEventListener('scroll', positionMenus, true);
+  global.addEventListener('crs:authentication-required', function () {
+    closeShortcuts();
+    closeMain(false);
+  });
+})(window);
+</script>

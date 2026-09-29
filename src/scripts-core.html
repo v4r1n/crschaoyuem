@@ -4,6 +4,10 @@
 
   const CRS = global.CRS = global.CRS || {};
   const THEME_STORAGE_KEY = 'crs-theme';
+  const DESKTOP_SIDEBAR_STORAGE_KEY = 'crs-desktop-sidebar-collapsed';
+  const SIDEBAR_SHORTCUT_STORAGE_KEY = 'crs-sidebar-shortcut-enabled';
+  const SIDEBAR_SHORTCUT_BINDING_KEY = 'crs-sidebar-shortcut-binding';
+  const DEFAULT_SIDEBAR_BINDING = Object.freeze({ ctrl: true, shift: true, alt: false, meta: false, code: 'KeyS' });
   const THEME_ORDER = ['system', 'light', 'dark'];
   const themeMedia = global.matchMedia ? global.matchMedia('(prefers-color-scheme: dark)') : null;
 
@@ -66,6 +70,154 @@
     applyTheme(THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length], true);
   }
 
+  function isDesktopViewport() {
+    return global.matchMedia
+      ? global.matchMedia('(min-width: 992px)').matches
+      : global.innerWidth >= 992;
+  }
+
+  function validSidebarBinding(binding) {
+    return binding && typeof binding === 'object' &&
+      /^Key[A-Z]$|^Digit[0-9]$/.test(String(binding.code || '')) &&
+      (binding.ctrl === true || binding.alt === true || binding.meta === true) &&
+      ['ctrl', 'shift', 'alt', 'meta'].every(function (key) { return typeof binding[key] === 'boolean'; });
+  }
+
+  function readSidebarBinding() {
+    try {
+      const saved = JSON.parse(global.localStorage.getItem(SIDEBAR_SHORTCUT_BINDING_KEY));
+      if (validSidebarBinding(saved)) return saved;
+    } catch (error) { /* Use the default when storage is unavailable or invalid. */ }
+    return Object.assign({}, DEFAULT_SIDEBAR_BINDING);
+  }
+
+  let sidebarBinding = readSidebarBinding();
+  let sidebarShortcutEnabledFallback = true;
+
+  function sidebarBindingLabel(binding) {
+    const parts = [];
+    if (binding.ctrl) parts.push('Ctrl');
+    if (binding.alt) parts.push('Alt');
+    if (binding.shift) parts.push('Shift');
+    if (binding.meta) parts.push('Meta');
+    parts.push(binding.code.replace(/^(?:Key|Digit)/, ''));
+    return parts.join(' + ');
+  }
+
+  function setDesktopSidebarCollapsed(collapsed, persist) {
+    const shell = document.getElementById('app-shell');
+    const button = document.getElementById('desktop-sidebar-toggle');
+    const brandLink = document.querySelector('#desktop-sidebar .brand-link');
+    const header = document.querySelector('#desktop-sidebar .sidebar-header');
+    if (!shell) return;
+
+    shell.classList.toggle('is-sidebar-collapsed', collapsed);
+    if (brandLink) {
+      brandLink.tabIndex = collapsed ? -1 : 0;
+      if (collapsed) brandLink.setAttribute('aria-hidden', 'true');
+      else brandLink.removeAttribute('aria-hidden');
+    }
+    if (!collapsed && header) header.classList.remove('is-toggle-revealed');
+    if (button) {
+      const label = collapsed ? 'ขยายแถบเมนู' : 'ยุบแถบเมนู';
+      const description = label + ' (' + sidebarBindingLabel(sidebarBinding) + ')';
+      button.setAttribute('aria-pressed', String(collapsed));
+      button.setAttribute('aria-label', description);
+      button.setAttribute('title', "Toggle sidebar '" + sidebarBindingLabel(sidebarBinding) + "'");
+    }
+
+    Array.prototype.forEach.call(shell.querySelectorAll('#desktop-nav .sidebar-link'), function (link) {
+      const label = Array.prototype.find.call(link.children, function (child) {
+        return child.tagName === 'SPAN' && !child.classList.contains('sidebar-link-indicator');
+      });
+      if (collapsed && label) {
+        const text = label.textContent.trim();
+        link.setAttribute('aria-label', text);
+        link.setAttribute('title', text);
+      } else {
+        link.removeAttribute('aria-label');
+        link.removeAttribute('title');
+      }
+    });
+
+    if (persist) {
+      try { global.localStorage.setItem(DESKTOP_SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0'); }
+      catch (error) { /* Sidebar preference remains active for this page when storage is unavailable. */ }
+    }
+  }
+
+  function initializeDesktopSidebar() {
+    let collapsed = false;
+    try { collapsed = global.localStorage.getItem(DESKTOP_SIDEBAR_STORAGE_KEY) === '1'; }
+    catch (error) { /* Use the expanded sidebar when storage is unavailable. */ }
+    setDesktopSidebarCollapsed(collapsed, false);
+  }
+
+  function toggleDesktopSidebar() {
+    const shell = document.getElementById('app-shell');
+    if (!shell || shell.hidden || !isDesktopViewport()) return;
+    setDesktopSidebarCollapsed(!shell.classList.contains('is-sidebar-collapsed'), true);
+  }
+
+  function initializeSidebarHeaderReveal() {
+    const header = document.querySelector('#desktop-sidebar .sidebar-header');
+    const brandLink = header && header.querySelector('.brand-link');
+    const brandMark = brandLink && brandLink.querySelector('.brand-mark');
+    const button = document.getElementById('desktop-sidebar-toggle');
+    if (!header || !brandMark || !button) return;
+    brandMark.addEventListener('pointerenter', function () {
+      header.classList.add('is-toggle-revealed');
+    });
+    header.addEventListener('pointerleave', function () {
+      if (!button.matches(':focus-visible')) header.classList.remove('is-toggle-revealed');
+    });
+    button.addEventListener('focus', function () {
+      if (button.matches(':focus-visible')) header.classList.add('is-toggle-revealed');
+    });
+    button.addEventListener('blur', function () {
+      if (!header.matches(':hover')) header.classList.remove('is-toggle-revealed');
+    });
+    brandLink.addEventListener('click', function (event) {
+      const shell = document.getElementById('app-shell');
+      if (!shell || !shell.classList.contains('is-sidebar-collapsed')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleDesktopSidebar();
+    }, true);
+  }
+
+  initializeSidebarHeaderReveal();
+
+  CRS.sidebarShortcut = Object.freeze({
+    enabled: function () {
+      try { return global.localStorage.getItem(SIDEBAR_SHORTCUT_STORAGE_KEY) !== '0'; }
+      catch (error) { return sidebarShortcutEnabledFallback; }
+    },
+    setEnabled: function (enabled) {
+      sidebarShortcutEnabledFallback = Boolean(enabled);
+      try { global.localStorage.setItem(SIDEBAR_SHORTCUT_STORAGE_KEY, enabled ? '1' : '0'); }
+      catch (error) { /* The new setting still works for this page. */ }
+    },
+    binding: function () { return Object.assign({}, sidebarBinding); },
+    label: function () { return sidebarBindingLabel(sidebarBinding); },
+    setBinding: function (binding) {
+      if (!validSidebarBinding(binding)) return false;
+      sidebarBinding = {
+        ctrl: binding.ctrl, shift: binding.shift, alt: binding.alt, meta: binding.meta, code: binding.code
+      };
+      try { global.localStorage.setItem(SIDEBAR_SHORTCUT_BINDING_KEY, JSON.stringify(sidebarBinding)); }
+      catch (error) { /* The new binding still works for this page. */ }
+      const shell = document.getElementById('app-shell');
+      if (shell) setDesktopSidebarCollapsed(shell.classList.contains('is-sidebar-collapsed'), false);
+      return true;
+    },
+    resetBinding: function () {
+      this.setBinding(DEFAULT_SIDEBAR_BINDING);
+      try { global.localStorage.removeItem(SIDEBAR_SHORTCUT_BINDING_KEY); }
+      catch (error) { /* The default still works for this page. */ }
+    }
+  });
+
   CRS.theme = Object.freeze({ apply: applyTheme, current: readThemePreference });
   applyTheme(document.documentElement.dataset.themePreference || readThemePreference(), false);
   if (themeMedia) {
@@ -77,6 +229,85 @@
     if (typeof themeMedia.addEventListener === 'function') themeMedia.addEventListener('change', followSystemTheme);
     else if (typeof themeMedia.addListener === 'function') themeMedia.addListener(followSystemTheme);
   }
+  const LANGUAGE_STORAGE_KEY = 'crs-ui-language';
+  const LANGUAGES = Object.freeze([
+    { code: 'auto', name: 'Auto detect' },
+    { code: 'th', name: 'ไทย' },
+    { code: 'en', name: 'English' },
+    { code: 'ms', name: 'Bahasa Melayu' },
+    { code: 'bs', name: 'bosanski' },
+    { code: 'my', name: 'Burmese' },
+    { code: 'ca', name: 'català' },
+    { code: 'cs', name: 'čeština' },
+    { code: 'da', name: 'dansk' },
+    { code: 'de', name: 'Deutsch' },
+    { code: 'et', name: 'eesti' },
+    { code: 'es', name: 'Español' },
+    { code: 'fr', name: 'Français' },
+    { code: 'ja', name: '日本語' },
+    { code: 'zh', name: '中文' }
+  ]);
+  const LANGUAGE_TEXT = Object.freeze({
+    th: {
+      help: 'ช่วยเหลือ', helpMenu: 'ความช่วยเหลือ', backToAccount: 'กลับไปยังเมนูบัญชี',
+      closeShortcuts: 'ปิดหน้าต่างคีย์ลัด',
+      helpCenter: 'ศูนย์ช่วยเหลือ', releaseNotes: 'บันทึกการเปลี่ยนแปลง',
+      userGuide: 'คู่มือการใช้งาน', shortcuts: 'คีย์ลัด',
+      terms: 'ข้อกำหนดการใช้งาน', privacyPolicy: 'นโยบายความเป็นส่วนตัว'
+    },
+    en: {
+      help: 'Help', helpMenu: 'Help', backToAccount: 'Back to account menu',
+      closeShortcuts: 'Close keyboard shortcuts',
+      helpCenter: 'Help Center', releaseNotes: 'Release Notes',
+      userGuide: 'User Guide', shortcuts: 'Keyboard Shortcuts',
+      terms: 'Terms of Service', privacyPolicy: 'Privacy Policy'
+    }
+  });
+  function languagePreference() {
+    try {
+      const saved = global.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      return LANGUAGES.some(function (language) { return language.code === saved; }) ? saved : 'auto';
+    } catch (error) { return 'auto'; }
+  }
+  function effectiveLanguage(preference) {
+    const code = preference === 'auto'
+      ? String(global.navigator && global.navigator.language || 'th').split('-')[0].toLowerCase()
+      : preference;
+    // Other languages remain selectable; untranslated UI safely falls back to Thai.
+    return LANGUAGE_TEXT[code] ? code : 'th';
+  }
+  function applyLanguage(preference, persist) {
+    const selected = LANGUAGES.some(function (language) { return language.code === preference; })
+      ? preference : 'auto';
+    const effective = effectiveLanguage(selected);
+    if (persist) {
+      try { global.localStorage.setItem(LANGUAGE_STORAGE_KEY, selected); }
+      catch (error) { /* The selection remains active until reload if storage is unavailable. */ }
+    }
+    document.documentElement.lang = effective;
+    document.documentElement.dataset.languagePreference = selected;
+    document.querySelectorAll('[data-language-text]').forEach(function (element) {
+      const translated = LANGUAGE_TEXT[effective][element.dataset.languageText];
+      if (translated) element.textContent = translated;
+    });
+    document.querySelectorAll('[data-language-aria-label]').forEach(function (element) {
+      const translated = LANGUAGE_TEXT[effective][element.dataset.languageAriaLabel];
+      if (translated) element.setAttribute('aria-label', translated);
+    });
+    global.dispatchEvent(new CustomEvent('crs:language-changed', {
+      detail: { preference: selected, effective: effective }
+    }));
+  }
+  CRS.language = Object.freeze({
+    options: LANGUAGES,
+    current: function () { return document.documentElement.dataset.languagePreference || languagePreference(); },
+    effective: function () { return effectiveLanguage(this.current()); },
+    set: function (code) { applyLanguage(code, true); }
+  });
+  applyLanguage(languagePreference(), false);
+  global.addEventListener('languagechange', function () {
+    if (CRS.language.current() === 'auto') applyLanguage('auto', false);
+  });
   const routeTitles = {
     dashboard: 'หน้าหลัก',
     equipment: 'อุปกรณ์',
@@ -86,7 +317,8 @@
     history: 'ประวัติของฉัน',
     admin: 'จัดการระบบ',
     scan: 'สแกน QR',
-    account: 'บัญชีของฉัน'
+    account: 'บัญชีของฉัน',
+    settings: 'การตั้งค่า'
   };
   const statusMeta = {
     AVAILABLE: ['พร้อมยืม', 'success'],
@@ -525,6 +757,8 @@
   };
 
   function applyActiveNavigation(route) {
+    const shell = CRS.$('#app-shell');
+    if (shell) shell.classList.toggle('is-settings-route', route === 'settings');
     const primary = ['equipment-detail', 'borrow'].indexOf(route) !== -1
       ? 'equipment'
       : (route === 'history' ? 'history' : route);
@@ -588,12 +822,337 @@
       CRS.escapeHtml(session.department || 'ไม่ระบุ') + '</dd><dt class="col-sm-4 text-secondary">สิทธิ์</dt><dd class="col-sm-8">' +
       CRS.statusBadge(session.role) + '</dd></dl><hr><p class="small text-secondary mb-3">' +
       'ระบบยืนยันบัญชี Google ผ่าน OAuth และตรวจสิทธิ์จากรายชื่อผู้ใช้ทุกครั้ง' +
-      '</p><button class="btn btn-outline-danger" type="button" data-action="sign-out">' +
+      '</p><div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-secondary" href="?view=settings" data-route="settings">' +
+      '<i class="bi bi-gear me-2" aria-hidden="true"></i>การตั้งค่า</a>' +
+      '<button class="btn btn-outline-danger" type="button" data-action="sign-out">' +
       '<i class="bi bi-box-arrow-right me-2" aria-hidden="true"></i>ออกจากระบบ / เปลี่ยนบัญชี' +
-      '</button></div></div></section>';
+      '</button></div></div></div></section>';
   }
 
   CRS.registerRoute('account', renderAccount);
+
+  const SETTINGS_SECTIONS = Object.freeze([
+    { key: 'general', label: 'General', icon: 'bi-gear' },
+    { key: 'appearance', label: 'Appearance', icon: 'bi-sun' },
+    { key: 'notifications', label: 'Notifications', icon: 'bi-bell' },
+    { key: 'profile', label: 'Profile', icon: 'bi-person' },
+    { key: 'security', label: 'Security and login', icon: 'bi-shield-lock' },
+    { key: 'account', label: 'Account', icon: 'bi-person-circle' },
+    { key: 'storage', label: 'Storage', icon: 'bi-folder' },
+    { key: 'keyboard', label: 'Keyboard', icon: 'bi-keyboard' }
+  ]);
+  let settingsSidebarCollapsed = false;
+
+  function renderSettings(params) {
+    const root = CRS.$('#view-root');
+    const selectedSection = SETTINGS_SECTIONS.find(function (item) { return item.key === (params && params.section); })
+      || SETTINGS_SECTIONS[0];
+    const sectionKey = selectedSection.key;
+    const navItem = function (item) {
+      return '<button class="settings-nav-item" type="button" data-settings-section="' + item.key + '"' +
+        (item.key === sectionKey ? ' aria-current="page"' : '') +
+        ' title="' + item.label + '"><i class="bi ' + item.icon + '" aria-hidden="true"></i>' +
+        '<span>' + item.label + '</span></button>';
+    };
+    const generalContent = '<div class="settings-card"><div class="settings-language-row">' +
+      '<div class="settings-language-copy"><strong>Language</strong>' +
+      '<span>Language for the app UI</span></div>' +
+      '<div class="settings-language-control">' +
+      '<button id="language-trigger" class="settings-language-trigger" type="button" ' +
+      'aria-haspopup="listbox" aria-expanded="false" aria-controls="language-list">' +
+      '<span data-selected-language>Auto detect</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>' +
+      '<div id="language-dropdown" class="settings-language-dropdown" hidden>' +
+      '<label class="settings-language-search"><i class="bi bi-search" aria-hidden="true"></i>' +
+      '<input id="language-search" type="search" autocomplete="off" placeholder="Search languages" ' +
+      'aria-label="Search languages"></label>' +
+      '<div id="language-list" class="settings-language-list" role="listbox" aria-label="Languages"></div>' +
+      '<p class="settings-language-empty" hidden>ไม่พบภาษาที่ค้นหา</p>' +
+      '</div></div></div><p class="settings-language-note" hidden>' +
+      'ภาษานี้ยังไม่มีคำแปล ส่วนที่รองรับจะแสดงเป็นภาษาไทยชั่วคราว</p></div>';
+    const appearanceContent = '<div class="settings-card settings-option-card"><div>' +
+      '<strong>Theme</strong><p>Appearance for the app UI</p></div>' +
+      '<div class="settings-theme-options" role="group" aria-label="Theme">' +
+      ['system', 'light', 'dark'].map(function (theme) {
+        const label = { system: 'Auto detect', light: 'Light', dark: 'Dark' }[theme];
+        return '<button type="button" class="settings-theme-option" data-settings-theme="' + theme +
+          '" aria-pressed="false">' + label + '</button>';
+      }).join('') + '</div></div>';
+    const otherContent = sectionKey === 'keyboard'
+      ? '<div class="settings-card settings-keyboard-card"><div class="account-shortcuts-body">' +
+        '<section aria-labelledby="settings-shortcuts-navigation"><h3 id="settings-shortcuts-navigation">Navigation</h3>' +
+        '<div class="account-shortcut-row"><span>ย้ายไปยังรายการถัดไป</span><button class="account-shortcut-key" type="button" disabled>Tab</button></div>' +
+        '<div class="account-shortcut-row"><span>ย้ายไปยังรายการก่อนหน้า</span><button class="account-shortcut-key" type="button" disabled>Shift + Tab</button></div></section>' +
+        '<section aria-labelledby="settings-shortcuts-actions"><h3 id="settings-shortcuts-actions">Actions</h3>' +
+        '<div class="account-shortcut-row"><span>เปิดรายการที่เลือก</span><button class="account-shortcut-key" type="button" disabled>Enter</button></div>' +
+        '<div class="account-shortcut-row"><span>ปิดเมนูหรือหน้าต่าง</span><button class="account-shortcut-key" type="button" disabled>Esc</button></div></section>' +
+        '<section aria-labelledby="settings-shortcuts-app"><h3 id="settings-shortcuts-app">App</h3>' +
+        '<div class="account-shortcut-row"><button class="account-shortcut-switch" type="button" role="switch" ' +
+        'data-settings-shortcut-enabled aria-checked="true" aria-labelledby="settings-sidebar-shortcut-label">' +
+        '<span class="account-shortcut-switch-thumb" aria-hidden="true"></span></button>' +
+        '<span id="settings-sidebar-shortcut-label">ยุบ/ขยาย Sidebar</span>' +
+        '<button class="account-shortcut-key" type="button" data-settings-shortcut-key>Ctrl + Shift + S</button></div></section>' +
+        '<p class="account-shortcut-status" role="status" aria-live="polite" data-settings-shortcut-status></p>' +
+        '</div><footer class="account-shortcuts-footer"><button type="button" class="btn btn-outline-secondary" ' +
+        'data-settings-shortcut-restore>คืนค่าเริ่มต้น / Restore defaults</button></footer></div>'
+      : (sectionKey === 'profile' || sectionKey === 'account')
+        ? '<div class="settings-card settings-placeholder"><p>ข้อมูลบัญชีและสิทธิ์อยู่ในหน้าบัญชีของฉัน</p>' +
+          '<a class="btn btn-outline-secondary" href="?view=account" data-route="account">ไปยังบัญชีของฉัน</a></div>'
+        : '<div class="settings-card settings-placeholder"><p>ยังไม่มีการตั้งค่าในส่วนนี้</p></div>';
+    root.innerHTML = '<section class="settings-page' + (settingsSidebarCollapsed ? ' is-sidebar-collapsed' : '') +
+      '" aria-labelledby="settings-heading">' +
+      '<button class="settings-sidebar-backdrop" type="button" aria-label="ปิดเมนูการตั้งค่า" hidden></button>' +
+      '<aside id="settings-sidebar" class="settings-sidebar" aria-label="เมนูการตั้งค่า">' +
+      '<div class="settings-sidebar-header"><button id="settings-sidebar-toggle" class="settings-icon-button" ' +
+      'type="button" aria-label="Toggle sidebar" aria-controls="settings-sidebar" ' +
+      'aria-expanded="' + String(!settingsSidebarCollapsed) + '" title="Toggle sidebar">' +
+      '<i class="bi bi-layout-sidebar-inset" aria-hidden="true"></i></button></div>' +
+      '<button id="settings-back-to-app" class="settings-back-button" type="button" title="Back to app">' +
+      '<i class="bi bi-arrow-left" aria-hidden="true"></i><span>Back to app</span></button>' +
+      '<label class="settings-nav-search"><i class="bi bi-search" aria-hidden="true"></i>' +
+      '<input id="settings-nav-search" type="search" placeholder="Search" aria-label="Search settings"></label>' +
+      '<nav class="settings-nav" aria-label="Settings sections"><p class="settings-nav-heading">Personal</p>' +
+      SETTINGS_SECTIONS.slice(0, 6).map(navItem).join('') +
+      '<div class="settings-nav-spacer"></div>' + SETTINGS_SECTIONS.slice(6).map(navItem).join('') +
+      '<p class="settings-nav-empty" hidden>ไม่พบเมนูที่ค้นหา</p></nav></aside>' +
+      '<div class="settings-workspace"><div class="settings-mobile-header">' +
+      '<button id="settings-mobile-toggle" class="settings-icon-button" type="button" ' +
+      'aria-label="เปิดเมนูการตั้งค่า" aria-controls="settings-sidebar" aria-expanded="false">' +
+      '<i class="bi bi-list" aria-hidden="true"></i></button>' +
+      '<span>Settings</span></div><div class="settings-content">' +
+      '<h2 id="settings-heading" class="settings-heading">' +
+      (sectionKey === 'keyboard' ? 'Keyboard Shortcuts' : selectedSection.label) + '</h2>' +
+      (sectionKey === 'general' ? generalContent : sectionKey === 'appearance' ? appearanceContent : otherContent) +
+      '</div></div></section>';
+
+    const section = root.querySelector('.settings-page');
+    const sidebarToggle = section.querySelector('#settings-sidebar-toggle');
+    const mobileToggle = section.querySelector('#settings-mobile-toggle');
+    const sidebarBackdrop = section.querySelector('.settings-sidebar-backdrop');
+    const settingsSidebar = section.querySelector('#settings-sidebar');
+    const navSearch = section.querySelector('#settings-nav-search');
+    let removeDropdownOutside = null;
+    function syncSidebarAccessibility() {
+      if (global.innerWidth >= 768) {
+        section.classList.remove('is-mobile-sidebar-open');
+        sidebarBackdrop.hidden = true;
+        mobileToggle.setAttribute('aria-expanded', 'false');
+      }
+      const mobile = global.innerWidth < 768;
+      const open = section.classList.contains('is-mobile-sidebar-open');
+      const inaccessible = mobile && !open;
+      settingsSidebar.inert = inaccessible;
+      if (inaccessible) settingsSidebar.setAttribute('aria-hidden', 'true');
+      else settingsSidebar.removeAttribute('aria-hidden');
+      sidebarToggle.setAttribute('aria-expanded', String(mobile ? open : !settingsSidebarCollapsed));
+    }
+    function setMobileSidebar(open) {
+      section.classList.toggle('is-mobile-sidebar-open', open);
+      mobileToggle.setAttribute('aria-expanded', String(open));
+      sidebarBackdrop.hidden = !open;
+      syncSidebarAccessibility();
+      if (open) navSearch.focus();
+      else mobileToggle.focus();
+    }
+    global.addEventListener('resize', syncSidebarAccessibility);
+    syncSidebarAccessibility();
+    CRS.setRouteCleanup(function () {
+      global.removeEventListener('resize', syncSidebarAccessibility);
+      if (removeDropdownOutside) removeDropdownOutside();
+    });
+    sidebarToggle.addEventListener('click', function () {
+      if (global.innerWidth < 768) {
+        setMobileSidebar(false);
+        return;
+      }
+      settingsSidebarCollapsed = !settingsSidebarCollapsed;
+      section.classList.toggle('is-sidebar-collapsed', settingsSidebarCollapsed);
+      sidebarToggle.setAttribute('aria-expanded', String(!settingsSidebarCollapsed));
+    });
+    mobileToggle.addEventListener('click', function () { setMobileSidebar(true); });
+    sidebarBackdrop.addEventListener('click', function () { setMobileSidebar(false); });
+    section.querySelector('#settings-back-to-app').addEventListener('click', function () {
+      CRS.navigate('dashboard', {});
+    });
+    section.querySelector('.settings-nav').addEventListener('click', function (event) {
+      const item = event.target.closest('[data-settings-section]');
+      if (item) CRS.navigate('settings', { section: item.dataset.settingsSection });
+    });
+    navSearch.addEventListener('input', function () {
+      const query = navSearch.value.trim().toLocaleLowerCase();
+      let count = 0;
+      section.querySelectorAll('[data-settings-section]').forEach(function (item) {
+        const match = item.textContent.toLocaleLowerCase().includes(query);
+        item.hidden = !match;
+        if (match) count += 1;
+      });
+      section.querySelector('.settings-nav-empty').hidden = count > 0;
+    });
+    section.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && section.classList.contains('is-mobile-sidebar-open')) {
+        event.preventDefault();
+        setMobileSidebar(false);
+      }
+    });
+    if (sectionKey === 'appearance') {
+      section.querySelectorAll('[data-settings-theme]').forEach(function (button) {
+        button.setAttribute('aria-pressed', String(button.dataset.settingsTheme === CRS.theme.current()));
+        button.addEventListener('click', function () {
+          CRS.theme.apply(button.dataset.settingsTheme, true);
+          section.querySelectorAll('[data-settings-theme]').forEach(function (choice) {
+            choice.setAttribute('aria-pressed', String(choice === button));
+          });
+        });
+      });
+    }
+    if (sectionKey === 'keyboard') {
+      const enabled = section.querySelector('[data-settings-shortcut-enabled]');
+      const key = section.querySelector('[data-settings-shortcut-key]');
+      const status = section.querySelector('[data-settings-shortcut-status]');
+      let recording = false;
+      function syncShortcut() {
+        enabled.setAttribute('aria-checked', String(CRS.sidebarShortcut.enabled()));
+        key.textContent = CRS.sidebarShortcut.label();
+        key.removeAttribute('aria-pressed');
+        recording = false;
+      }
+      syncShortcut();
+      enabled.addEventListener('click', function () {
+        const next = !CRS.sidebarShortcut.enabled();
+        CRS.sidebarShortcut.setEnabled(next);
+        enabled.setAttribute('aria-checked', String(next));
+      });
+      key.addEventListener('click', function () {
+        if (recording) { syncShortcut(); return; }
+        recording = true;
+        key.textContent = 'Press Key sequence';
+        key.setAttribute('aria-pressed', 'true');
+        status.textContent = 'กด Ctrl, Alt หรือ Meta ร่วมกับตัวอักษรหรือตัวเลข · Esc เพื่อยกเลิก';
+        key.focus();
+      });
+      key.addEventListener('blur', function () {
+        if (recording) syncShortcut();
+      });
+      section.addEventListener('keydown', function (event) {
+        if (!recording || event.repeat) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (['Control', 'Shift', 'Alt', 'Meta'].indexOf(event.key) !== -1) return;
+        if (event.key === 'Escape') {
+          syncShortcut();
+          status.textContent = 'ยกเลิกการเปลี่ยนคีย์ลัด';
+          return;
+        }
+        if (!CRS.sidebarShortcut.setBinding({
+          ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey,
+          meta: event.metaKey, code: event.code
+        })) {
+          status.textContent = 'โปรดกด Ctrl, Alt หรือ Meta ร่วมกับตัวอักษรหรือตัวเลข';
+          return;
+        }
+        syncShortcut();
+        status.textContent = 'บันทึกคีย์ลัด Sidebar แล้ว';
+      }, true);
+      section.querySelector('[data-settings-shortcut-restore]').addEventListener('click', function () {
+        CRS.sidebarShortcut.setEnabled(true);
+        CRS.sidebarShortcut.resetBinding();
+        syncShortcut();
+        status.textContent = 'คืนค่าเริ่มต้นแล้ว';
+      });
+    }
+    if (sectionKey !== 'general') return;
+    const trigger = section.querySelector('#language-trigger');
+    const dropdown = section.querySelector('#language-dropdown');
+    const search = section.querySelector('#language-search');
+    const list = section.querySelector('#language-list');
+    const empty = section.querySelector('.settings-language-empty');
+    const note = section.querySelector('.settings-language-note');
+    const options = CRS.language.options;
+
+    function updateSelection() {
+      const selected = CRS.language.current();
+      const language = options.find(function (item) { return item.code === selected; }) || options[0];
+      trigger.querySelector('[data-selected-language]').textContent = language.name;
+      note.hidden = selected === 'auto' || selected === 'th' || selected === 'en';
+      list.querySelectorAll('[data-language-code]').forEach(function (option) {
+        option.setAttribute('aria-selected', String(option.dataset.languageCode === selected));
+      });
+    }
+    function renderOptions() {
+      const query = search.value.trim().toLocaleLowerCase();
+      list.replaceChildren();
+      const matches = options.filter(function (item) {
+        return item.name.toLocaleLowerCase().includes(query) || item.code.includes(query);
+      }).sort(function (a, b) {
+        if (a.code === 'auto') return -1;
+        if (b.code === 'auto') return 1;
+        return a.name.localeCompare(b.name, 'en', { sensitivity: 'base' });
+      });
+      matches.forEach(function (item) {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'settings-language-option';
+        option.dataset.languageCode = item.code;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(item.code === CRS.language.current()));
+        option.textContent = item.name;
+        const check = document.createElement('i');
+        check.className = 'bi bi-check-lg';
+        check.setAttribute('aria-hidden', 'true');
+        option.append(check);
+        list.append(option);
+      });
+      empty.hidden = matches.length > 0;
+    }
+    function closeDropdown(restoreFocus) {
+      if (dropdown.hidden) return;
+      dropdown.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) trigger.focus();
+    }
+    trigger.addEventListener('click', function () {
+      const opening = dropdown.hidden;
+      dropdown.hidden = !opening;
+      trigger.setAttribute('aria-expanded', String(opening));
+      if (opening) {
+        search.value = '';
+        renderOptions();
+        search.focus();
+      }
+    });
+    search.addEventListener('input', renderOptions);
+    list.addEventListener('click', function (event) {
+      const option = event.target.closest('[data-language-code]');
+      if (!option) return;
+      CRS.language.set(option.dataset.languageCode);
+      updateSelection();
+      closeDropdown(true);
+    });
+    section.addEventListener('keydown', function (event) {
+      if (dropdown.hidden) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDropdown(true);
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const choices = Array.from(list.querySelectorAll('[data-language-code]'));
+        if (!choices.length) return;
+        event.preventDefault();
+        const current = choices.indexOf(document.activeElement);
+        const next = event.key === 'ArrowDown'
+          ? (current + 1) % choices.length
+          : (current < 0 ? choices.length - 1 : (current - 1 + choices.length) % choices.length);
+        choices[next].focus();
+        choices[next].scrollIntoView({ block: 'nearest' });
+      }
+    });
+    function closeOnOutsideClick(event) {
+      if (!dropdown.contains(event.target) && !trigger.contains(event.target)) closeDropdown(false);
+    }
+    document.addEventListener('click', closeOnOutsideClick);
+    removeDropdownOutside = function () { document.removeEventListener('click', closeOnOutsideClick); };
+    updateSelection();
+  }
+
+  CRS.registerRoute('settings', renderSettings);
 
   function updateNetworkStatus() {
     const indicator = CRS.$('#network-status');
@@ -604,7 +1163,6 @@
 
   function applyBootstrap(data) {
     CRS.state.bootstrap = data;
-    CRS.$$('[data-app-name]').forEach(function (node) { node.textContent = data.app.name; });
     CRS.$$('[data-app-short-name]').forEach(function (node) {
       node.textContent = data.app.shortName || 'CRS Yuem-Kuen';
     });
@@ -666,6 +1224,7 @@
   }
 
   async function bootstrapApplication() {
+    initializeDesktopSidebar();
     const splash = CRS.$('#app-splash');
     const access = CRS.$('#access-state');
     if (splash) splash.hidden = false;
@@ -690,6 +1249,8 @@
   document.addEventListener('click', function (event) {
     const themeToggle = event.target.closest('[data-action="theme-toggle"]');
     if (themeToggle) cycleTheme();
+    const sidebarToggle = event.target.closest('[data-action="sidebar-toggle"]');
+    if (sidebarToggle) toggleDesktopSidebar();
     const routeLink = event.target.closest('[data-route]');
     if (routeLink) {
       event.preventDefault();
@@ -697,6 +1258,20 @@
     }
     const signOut = event.target.closest('[data-action="sign-out"]');
     if (signOut && CRS.auth && typeof CRS.auth.signOut === 'function') CRS.auth.signOut();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.ctrlKey !== sidebarBinding.ctrl || event.shiftKey !== sidebarBinding.shift ||
+      event.altKey !== sidebarBinding.alt || event.metaKey !== sidebarBinding.meta ||
+      event.code !== sidebarBinding.code) return;
+    if (!CRS.sidebarShortcut.enabled()) return;
+    const target = event.target;
+    if (target && (target.isContentEditable ||
+      (typeof target.closest === 'function' && target.closest('input, textarea, select, [contenteditable="true"]')))) return;
+    const shell = document.getElementById('app-shell');
+    if (!shell || shell.hidden || !isDesktopViewport()) return;
+    event.preventDefault();
+    toggleDesktopSidebar();
   });
 
   if (global.google && google.script && google.script.history) {

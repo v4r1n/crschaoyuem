@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Equipment and My Borrow search inputs now match History search sizing and four-corner radius; equipment filters align on desktop.
+
 ### Added
+
+- Settings workspace with General, Appearance, and inline Keyboard Shortcuts; account and Help popovers with accessible keyboard controls and Thai/English language labels.
+- Desktop sidebar toggle, configurable app shortcut, and responsive account-menu positioning.
+- Playwright coverage for Settings, account menus, shortcut editing, and search-control layout.
 
 - Opt-in six-hour remembered application sessions with default same-tab `sessionStorage`, explicit `localStorage`, expiry validation, fail-closed eviction handling, and synchronized cross-tab logout; browser storage contains only the opaque application token and expiry.
 - One-time callback Copy acknowledgement so the initiating tab can reliably close the Apps Script popup despite the callback iframe boundary.

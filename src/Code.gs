@@ -10,6 +10,7 @@ var HTML_PARTIALS_ = Object.freeze([
   'admin',
   'scripts-api',
   'scripts-core',
+  'scripts-account-menu',
   'scripts-dashboard',
   'scripts-equipment',
   'scripts-qr',
@@ -28,7 +29,8 @@ var CLIENT_ROUTES_ = Object.freeze([
   'history',
   'admin',
   'scan',
-  'account'
+  'account',
+  'settings'
 ]);
 
 /**

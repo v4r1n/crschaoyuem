@@ -128,11 +128,12 @@
         <div class="sidebar-header">
           <a class="brand-link" href="?view=dashboard" data-route="dashboard" aria-label="ไปหน้าแรก">
             <span class="brand-mark" aria-hidden="true"><i class="bi bi-box-seam"></i></span>
-            <span class="brand-copy">
-              <strong data-app-short-name>CRS Yuem-Kuen</strong>
-              <small data-app-name>CRS Yuem-Kuen System</small>
-            </span>
           </a>
+          <button id="desktop-sidebar-toggle" class="sidebar-toggle d-none d-lg-inline-flex" type="button"
+                  data-action="sidebar-toggle" aria-controls="desktop-sidebar" aria-pressed="false"
+                  aria-label="ยุบแถบเมนู (Ctrl + Shift + S)" title="Toggle sidebar 'Ctrl + Shift + S'">
+            <i class="bi bi-layout-sidebar-inset" aria-hidden="true"></i>
+          </button>
         </div>
 
         <nav id="desktop-nav" class="sidebar-nav" aria-label="ส่วนใช้งาน">
@@ -169,7 +170,8 @@
         </nav>
 
         <div class="sidebar-footer">
-          <a class="account-summary" href="?view=account" data-route="account">
+          <a class="account-summary" href="?view=account" role="button" data-action="account-menu-toggle"
+             aria-label="เปิดเมนูบัญชี" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu-panel">
             <span class="user-avatar" data-session-initial aria-hidden="true">—</span>
             <span class="account-summary-copy">
               <strong data-session-name>กำลังโหลด</strong>
@@ -194,19 +196,6 @@
               <i class="bi bi-wifi-off" aria-hidden="true"></i>
               <span>ออฟไลน์</span>
             </span>
-            <a
-              id="topbar-account"
-              class="topbar-account"
-              href="?view=account"
-              data-route="account"
-              aria-label="เปิดข้อมูลบัญชี"
-            >
-              <span class="user-avatar" data-session-initial aria-hidden="true">—</span>
-              <span class="topbar-account-copy d-none d-sm-flex">
-                <strong data-session-name>กำลังโหลด</strong>
-                <small data-session-role>ผู้ใช้งาน</small>
-              </span>
-            </a>
             <button id="theme-toggle" class="theme-toggle theme-toggle-topbar" type="button"
                     data-action="theme-toggle"
                     aria-label="ธีม: ตามระบบ กดเพื่อเปลี่ยนเป็นโหมดสว่าง"
@@ -279,6 +268,7 @@
     <?!= include_('vendor-html5-qrcode'); ?>
     <?!= include_('scripts-api'); ?>
     <?!= include_('scripts-core'); ?>
+    <?!= include_('scripts-account-menu'); ?>
     <?!= include_('scripts-qr'); ?>
     <?!= include_('scripts-dashboard'); ?>
     <?!= include_('scripts-equipment'); ?>

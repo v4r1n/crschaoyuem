@@ -66,8 +66,9 @@ function assembleApplication(requestUrl) {
     .replace(/<\?=\s*initialView\s*\?>/g, escapeAttribute(initialView))
     .replace(/<\?=\s*initialAssetId\s*\?>/g, escapeAttribute(initialAssetId));
   markup = removeExternalStyles(markup);
+  markup = markup.replace("<?!= include_('styles'); ?>",
+    `<style data-test-bootstrap-lite>\n${bootstrapCss}\n</style>\n<?!= include_('styles'); ?>`);
   markup = markup.replace('</head>', [
-    `<style data-test-bootstrap-lite>\n${bootstrapCss}\n</style>`,
     `<script data-test-browser-environment>\n${browserEnvironment}\n</script>`,
     '</head>'
   ].join('\n'));

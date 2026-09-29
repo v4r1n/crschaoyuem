@@ -1,10 +1,10 @@
 <template id="view-equipment-template">
   <section id="page-equipment" class="app-page" data-page="equipment" aria-labelledby="equipment-title">
     <header class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
-      <div>
+      <!-- <div>
         <p class="text-body-secondary small mb-1">ค้นหาและตรวจสอบสถานะทรัพย์สิน</p>
         <h1 id="equipment-title" class="h3 mb-0">อุปกรณ์</h1>
-      </div>
+      </div> -->
       <button type="button" class="btn btn-primary align-self-start align-self-md-center"
               data-action="add-equipment" data-admin-only>
         <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>เพิ่มอุปกรณ์
@@ -12,10 +12,10 @@
     </header>
 
     <form id="form-equipment-filter" class="card card-body mb-4" data-filter-form novalidate>
-      <div class="row g-3 align-items-end">
+      <div class="row g-3 align-items-start">
         <div class="col-12 col-lg-8">
           <label for="equipment-search" class="form-label">ค้นหา</label>
-          <div class="input-group">
+          <div class="input-group search-field-with-icon">
             <span class="input-group-text" aria-hidden="true"><i class="bi bi-search"></i></span>
             <input id="equipment-search" name="search" type="search" class="form-control"
                    autocomplete="off" aria-describedby="equipment-search-help">

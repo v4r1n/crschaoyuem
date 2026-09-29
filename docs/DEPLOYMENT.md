@@ -98,7 +98,7 @@ Utils.gs
 Validation.gs
 ```
 
-ไฟล์ HTML จำนวน 19 ไฟล์:
+ไฟล์ HTML จำนวน 20 ไฟล์:
 
 ```text
 admin.html
@@ -111,6 +111,7 @@ index.html
 my-borrow.html
 scan.html
 scripts-admin.html
+scripts-account-menu.html
 scripts-api.html
 scripts-borrow.html
 scripts-core.html
@@ -122,7 +123,7 @@ vendor-html5-qrcode.html
 vendor-qrcode-generator.html
 ```
 
-รวม manifest แล้วมี runtime source 46 ไฟล์ ไม่ต้องอัปโหลด `docs/`, `tests/`, `node_modules/`, `package.json` หรือไฟล์ license เข้า Apps Script การทำงานของไฟล์ `.gs` ไม่ขึ้นกับลำดับที่แสดงใน editor
+รวม manifest แล้วมี runtime source 47 ไฟล์ ไม่ต้องอัปโหลด `docs/`, `tests/`, `node_modules/`, `package.json` หรือไฟล์ license เข้า Apps Script การทำงานของไฟล์ `.gs` ไม่ขึ้นกับลำดับที่แสดงใน editor
 
 ก่อนส่ง source ขึ้น production ผู้พัฒนาควรรันจาก repository ด้วย Node.js 20 ขึ้นไป:
 
@@ -361,7 +362,7 @@ Session ใช้ shared ScriptCache ที่แยก record ด้วย hash
 
 1. หยุดหรือแจ้ง maintenance window สำหรับ mutation สำคัญ
 2. สำรอง Sheet และรัน Integrity audit ก่อนเปลี่ยนรุ่น
-3. อัปโหลด source รุ่นใหม่เข้า Apps Script project เดิมให้ครบ 46 runtime files และเทียบ inventory สองทาง ไฟล์ `.gs/.html` เก่าที่ถูกถอดจาก repository ต้องผ่าน review แล้วนำออกจาก project ด้วย เพราะไฟล์ `.gs` ที่ค้างยังเป็น global callable code ได้
+3. อัปโหลด source รุ่นใหม่เข้า Apps Script project เดิมให้ครบ 47 runtime files และเทียบ inventory สองทาง ไฟล์ `.gs/.html` เก่าที่ถูกถอดจาก repository ต้องผ่าน review แล้วนำออกจาก project ด้วย เพราะไฟล์ `.gs` ที่ค้างยังเป็น global callable code ได้
 4. อ่าน [MIGRATING.md](MIGRATING.md) แล้วรัน private editor function `setupSystem_()` เพื่อใช้ additive migrations
 5. ที่ **Deploy > Manage deployments** เลือก deployment production เดิม แล้วกด **Edit**
 6. ก่อน deploy ทุกครั้ง ตรวจ **Execute as** เป็น **Me** (`USER_DEPLOYING`) และ **Who has access** เป็น **Anyone** (`ANYONE` สำหรับบัญชี Google ที่ลงชื่อเข้าใช้แล้ว); ต้องไม่ใช่ `DOMAIN` หรือ `ANYONE_ANONYMOUS`

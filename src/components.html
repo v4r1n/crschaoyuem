@@ -58,6 +58,130 @@
   </div>
 </div>
 
+<div id="account-menu-panel" class="account-popover" role="menu" aria-label="เมนูบัญชี" hidden>
+  <button id="account-menu-header" class="account-menu-profile" type="button" role="menuitem"
+          data-account-submenu="identity" aria-haspopup="menu" aria-expanded="false"
+          aria-controls="account-identity-menu">
+    <span class="user-avatar" data-session-initial aria-hidden="true">—</span>
+    <span class="account-menu-profile-copy">
+      <strong data-session-name>กำลังโหลด</strong>
+      <small data-session-role>ผู้ใช้งาน</small>
+    </span>
+    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+  </button>
+  <div class="account-menu-separator" role="separator"></div>
+  <div class="account-menu-section" role="group" aria-label="บัญชีและระบบ">
+    <button class="account-menu-item" type="button" role="menuitem" data-account-route="account">
+      <i class="bi bi-person-circle" aria-hidden="true"></i><span>บัญชีของฉัน</span>
+    </button>
+    <button class="account-menu-item" type="button" role="menuitem" data-account-route="settings">
+      <i class="bi bi-gear" aria-hidden="true"></i><span>การตั้งค่า</span>
+    </button>
+    <button class="account-menu-item" type="button" role="menuitem" data-account-route="admin" data-admin-only hidden>
+      <i class="bi bi-shield-check" aria-hidden="true"></i><span>ศูนย์ผู้ดูแลระบบ</span>
+    </button>
+  </div>
+  <div class="account-menu-separator" role="separator"></div>
+  <div class="account-menu-section" role="group" aria-label="ความช่วยเหลือและออกจากระบบ">
+    <button id="account-help-trigger" class="account-menu-item" type="button" role="menuitem"
+            data-account-submenu="help" aria-haspopup="menu" aria-expanded="false"
+            aria-controls="account-help-menu">
+      <i class="bi bi-question-circle" aria-hidden="true"></i><span data-language-text="help">ช่วยเหลือ</span>
+      <i class="bi bi-chevron-right account-menu-chevron" aria-hidden="true"></i>
+    </button>
+    <button class="account-menu-item" type="button" role="menuitem" data-account-command="logout">
+      <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>ออกจากระบบ</span>
+    </button>
+  </div>
+</div>
+
+<div id="account-identity-menu" class="account-submenu" role="menu" aria-label="บัญชีที่กำลังใช้งาน" hidden>
+  <button class="account-menu-back" type="button" role="menuitem" data-account-back>
+    <i class="bi bi-arrow-left" aria-hidden="true"></i><span>กลับไปยังเมนูบัญชี</span>
+  </button>
+  <p class="account-identity-email"><i class="bi bi-person-circle" aria-hidden="true"></i>
+    <span data-session-email>—</span>
+  </p>
+  <div class="account-menu-separator" role="separator"></div>
+  <div class="account-current-profile" role="none">
+    <span class="user-avatar" data-session-initial aria-hidden="true">—</span>
+    <span class="account-menu-profile-copy"><strong data-session-name>กำลังโหลด</strong><small>บัญชีปัจจุบัน</small></span>
+    <i class="bi bi-check-lg" aria-label="กำลังใช้งาน"></i>
+  </div>
+  <div class="account-menu-separator" role="separator"></div>
+  <button class="account-menu-item" type="button" role="menuitem" data-account-command="switch">
+    <i class="bi bi-person-plus" aria-hidden="true"></i><span>เปลี่ยนบัญชี Google</span>
+  </button>
+</div>
+
+<div id="account-help-menu" class="account-submenu" role="menu" aria-label="ความช่วยเหลือ" data-language-aria-label="helpMenu" hidden>
+  <button class="account-menu-back" type="button" role="menuitem" data-account-back>
+    <i class="bi bi-arrow-left" aria-hidden="true"></i><span data-language-text="backToAccount">กลับไปยังเมนูบัญชี</span>
+  </button>
+  <a class="account-menu-item" role="menuitem" data-help-link="helpCenter" aria-disabled="true" tabindex="-1">
+    <i class="bi bi-life-preserver" aria-hidden="true"></i><span data-language-text="helpCenter">ศูนย์ช่วยเหลือ</span>
+    <i class="bi bi-box-arrow-up-right account-menu-external" aria-hidden="true"></i>
+  </a>
+  <a class="account-menu-item" role="menuitem" data-help-link="releaseNotes" aria-disabled="true" tabindex="-1">
+    <i class="bi bi-journal-text" aria-hidden="true"></i><span data-language-text="releaseNotes">บันทึกการเปลี่ยนแปลง</span>
+    <i class="bi bi-box-arrow-up-right account-menu-external" aria-hidden="true"></i>
+  </a>
+  <a class="account-menu-item" role="menuitem" data-help-link="userGuide" aria-disabled="true" tabindex="-1">
+    <i class="bi bi-book" aria-hidden="true"></i><span data-language-text="userGuide">คู่มือการใช้งาน</span>
+    <i class="bi bi-box-arrow-up-right account-menu-external" aria-hidden="true"></i>
+  </a>
+  <button class="account-menu-item" type="button" role="menuitem" data-account-command="shortcuts">
+    <i class="bi bi-keyboard" aria-hidden="true"></i><span data-language-text="shortcuts">คีย์ลัด</span>
+  </button>
+  <div class="account-menu-separator" role="separator"></div>
+  <a class="account-menu-item" role="menuitem" data-help-link="terms" aria-disabled="true" tabindex="-1">
+    <i class="bi bi-file-earmark-text" aria-hidden="true"></i><span data-language-text="terms">ข้อกำหนดการใช้งาน</span>
+    <i class="bi bi-box-arrow-up-right account-menu-external" aria-hidden="true"></i>
+  </a>
+  <a class="account-menu-item" role="menuitem" data-help-link="privacyPolicy" aria-disabled="true" tabindex="-1">
+    <i class="bi bi-shield-lock" aria-hidden="true"></i><span data-language-text="privacyPolicy">นโยบายความเป็นส่วนตัว</span>
+    <i class="bi bi-box-arrow-up-right account-menu-external" aria-hidden="true"></i>
+  </a>
+</div>
+
+<div id="account-shortcuts-overlay" class="account-shortcuts-overlay" hidden>
+  <section class="account-shortcuts-dialog" role="dialog" aria-modal="true"
+           aria-labelledby="account-shortcuts-title" tabindex="-1">
+    <header class="account-shortcuts-header">
+      <h2 id="account-shortcuts-title" data-language-text="shortcuts">คีย์ลัด</h2>
+      <button class="account-shortcuts-close" type="button" data-account-shortcuts-close aria-label="ปิดหน้าต่างคีย์ลัด" data-language-aria-label="closeShortcuts">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </header>
+    <div class="account-shortcuts-body">
+      <section aria-labelledby="account-shortcuts-navigation">
+        <h3 id="account-shortcuts-navigation">Navigation</h3>
+        <div class="account-shortcut-row"><span>ย้ายไปยังรายการถัดไป</span><button class="account-shortcut-key" type="button" data-shortcut-key="tab" aria-disabled="true" disabled>Tab</button></div>
+        <div class="account-shortcut-row"><span>ย้ายไปยังรายการก่อนหน้า</span><button class="account-shortcut-key" type="button" data-shortcut-key="shift-tab" aria-disabled="true" disabled>Shift + Tab</button></div>
+      </section>
+      <section aria-labelledby="account-shortcuts-actions">
+        <h3 id="account-shortcuts-actions">Actions</h3>
+        <div class="account-shortcut-row"><span>เปิดรายการที่เลือก</span><button class="account-shortcut-key" type="button" data-shortcut-key="enter" aria-disabled="true" disabled>Enter</button></div>
+        <div class="account-shortcut-row"><span>ปิดเมนูหรือหน้าต่าง</span><button class="account-shortcut-key" type="button" data-shortcut-key="escape" aria-disabled="true" disabled>Esc</button></div>
+      </section>
+      <section aria-labelledby="account-shortcuts-app">
+        <h3 id="account-shortcuts-app">App</h3>
+        <div class="account-shortcut-row">
+          <button id="sidebar-shortcut-enabled" class="account-shortcut-switch" type="button" role="switch"
+                  aria-checked="true" aria-labelledby="sidebar-shortcut-label">
+            <span class="account-shortcut-switch-thumb" aria-hidden="true"></span>
+          </button>
+          <span id="sidebar-shortcut-label">ยุบ/ขยาย Sidebar</span><button class="account-shortcut-key" type="button" data-shortcut-key="sidebar">Ctrl + Shift + S</button>
+        </div>
+      </section>
+      <p id="account-shortcut-status" class="account-shortcut-status" role="status" aria-live="polite"></p>
+    </div>
+    <footer class="account-shortcuts-footer">
+      <button type="button" class="btn btn-outline-secondary" data-account-shortcuts-restore>คืนค่าเริ่มต้น / Restore defaults</button>
+    </footer>
+  </section>
+</div>
+
 <template id="component-loading-template">
   <section class="content-loading-state" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล">
     <div class="content-loading-content">

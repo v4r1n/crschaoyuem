@@ -67,6 +67,7 @@ table { width: 100%; border-collapse: collapse; }
 .gap-2 { gap: .5rem !important; }
 .gap-3 { gap: 1rem !important; }
 .gap-4 { gap: 1.5rem !important; }
+.align-items-end { align-items: flex-end !important; }
 .position-fixed { position: fixed !important; }
 .top-0 { top: 0 !important; }
 .end-0 { right: 0 !important; }
@@ -234,11 +235,14 @@ textarea.form-control { min-height: 6rem; resize: vertical; }
 @media (min-width: 992px) {
   .d-lg-none { display: none !important; }
   .d-lg-flex { display: flex !important; }
+  .d-lg-inline-flex { display: inline-flex !important; }
   .order-lg-1 { order: 1 !important; }
   .order-lg-2 { order: 2 !important; }
+  .col-lg-2 { width: 16.666667%; }
   .col-lg-5 { width: 41.666667%; }
   .col-lg-6 { width: 50%; }
   .col-lg-7 { width: 58.333333%; }
+  .col-lg-8 { width: 66.666667%; }
 }
 
 @media (min-width: 1200px) {

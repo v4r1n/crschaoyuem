@@ -47,7 +47,7 @@ test('equipment editor scrolls its fields with the mouse while header and action
   expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
   expect(before.overflowY).toBe('auto');
   const box = await body.boundingBox();
-  await page.mouse.move(box.x + box.width - 8, box.y + 32);
+  await page.mouse.move(box.x + box.width / 2, box.y + 32);
   await page.mouse.wheel(0, 700);
   await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(before.scrollTop);
   await expect(modal.locator('.modal-header')).toBeInViewport();
@@ -61,6 +61,8 @@ const ROUTE_SELECTORS = {
   scan: '#page-scan',
   'my-borrow': '#page-my-borrow',
   admin: '#page-admin',
+  account: '#account-heading',
+  settings: '#settings-heading',
 };
 
 function routeUrl(route, extras = '') {
@@ -285,7 +287,7 @@ test('bootstrap fails closed and keeps the admin route role-gated', async ({ pag
   await openAuthenticated(page, '/?view=dashboard&role=admin', 'dashboard');
   await expect(page.locator('#dashboard-content')).toBeVisible();
   await expect(page.locator('[data-app-short-name]').first()).toHaveText('CRS Yuem-Kuen');
-  await expect(page.locator('[data-app-name]').first()).toHaveText('CRS Yuem-Kuen System');
+  await expect(page.locator('[data-app-name]')).toHaveCount(0);
   await expect(page).toHaveTitle('หน้าหลัก · CRS Yuem-Kuen System');
   await expect(page.locator('[data-session-name]').first()).toHaveText('ผู้ดูแลทดสอบ');
   await expect(page.locator('[data-route="admin"]').first()).toBeVisible();
@@ -456,7 +458,8 @@ test('opt-in session persistence restores across links and synchronizes logout a
   expect(restored.beginCount).toBe(0);
   expect(restored.bootstrapTokens).toEqual([record.token]);
 
-  await secondPage.locator('a[href="?view=account"]:visible').first().click();
+  await secondPage.locator('#desktop-sidebar .account-summary').click();
+  await secondPage.locator('[data-account-route="account"]').click();
   await secondPage.locator('[data-action="sign-out"]:visible').click();
   await expect(secondPage.locator('#access-state')).toBeVisible();
   await expect(page.locator('#access-state')).toBeVisible();
@@ -649,6 +652,31 @@ test('admin borrowing filters align labels and controls on one desktop row', asy
   expect(Math.max(...alignment.controls) - Math.min(...alignment.controls)).toBeLessThanOrEqual(1);
 });
 
+test('equipment search, category, and status align on one desktop row', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openAuthenticated(page, routeUrl('equipment'), 'equipment');
+
+  const alignment = await page.locator('#form-equipment-filter').evaluate((form) => {
+    const tops = (selectors) => selectors.map((selector) =>
+      Math.round(form.querySelector(selector).getBoundingClientRect().top));
+    return {
+      labels: tops([
+        'label[for="equipment-search"]',
+        'label[for="equipment-category-filter"]',
+        'label[for="equipment-status-filter"]',
+      ]),
+      controls: tops([
+        '#equipment-search',
+        '#equipment-category-filter',
+        '#equipment-status-filter',
+      ]),
+    };
+  });
+
+  expect(Math.max(...alignment.labels) - Math.min(...alignment.labels)).toBeLessThanOrEqual(1);
+  expect(Math.max(...alignment.controls) - Math.min(...alignment.controls)).toBeLessThanOrEqual(1);
+});
+
 test('my borrowing filters align labels and controls on one desktop row', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openAuthenticated(page, routeUrl('my-borrow'), 'my-borrow');
@@ -709,7 +737,7 @@ test('dashboard, catalog, detail, scanner, borrowing, and admin remain contained
         `${route} at ${viewport.width}px overflows the document: ${JSON.stringify(layout.offenders)}`)
         .toBeLessThanOrEqual(layout.viewport + 1);
       expect(layout.main, `${route} at ${viewport.width}px overflows the main region`).toBeLessThanOrEqual(layout.mainClient + 1);
-      await expect(page.locator(`${ROUTE_SELECTORS[route]} h1`).first()).toBeVisible();
+      await expect(page.locator('#page-title')).toBeVisible();
     }
 
     if (viewport.width < 992) {
@@ -742,4 +770,533 @@ test('RPC failures surface Thai feedback without leaving a loading state', async
   await expect(page.locator('#equipment-error')).toContainText('จำลองข้อผิดพลาด');
   await expect(page.locator('#view-root')).toHaveAttribute('aria-busy', 'false');
   expect(pageErrors).toEqual([]);
+});
+
+test('equipment and borrowing search controls match the history search height and four corner radii', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=equipment&role=admin', 'equipment');
+
+  const appearance = async (selector) => page.locator(selector).evaluate((input) => {
+    const style = getComputedStyle(input);
+    return {
+      height: input.getBoundingClientRect().height,
+      corners: [style.borderTopLeftRadius, style.borderTopRightRadius,
+        style.borderBottomRightRadius, style.borderBottomLeftRadius],
+    };
+  });
+  const equipment = await appearance('#equipment-search');
+  await page.locator('#desktop-nav [data-route="my-borrow"]').click();
+  await expect(page.locator('#page-my-borrow')).toBeVisible();
+  const borrowing = await appearance('#my-borrow-search');
+  await page.locator('#desktop-nav [data-route="history"]').click();
+  await expect(page.locator('#my-borrow-history-pane')).toBeVisible();
+  const history = await appearance('#my-history-search');
+
+  for (const control of [equipment, borrowing]) {
+    expect(control.height).toBe(history.height);
+    expect(control.corners).toEqual(history.corners);
+  }
+});
+
+test('sidebar account summary opens and closes a floating account menu without navigation or layout shift', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=admin', 'dashboard');
+  const trigger = page.locator('#desktop-sidebar .account-summary');
+  const before = await page.locator('#app-main').boundingBox();
+  await trigger.click();
+  await expect(page.locator('#account-menu-panel')).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#page-dashboard')).toBeVisible();
+  const after = await page.locator('#app-main').boundingBox();
+  expect(after.x).toBe(before.x);
+  expect(after.width).toBe(before.width);
+  await trigger.click();
+  await expect(page.locator('#account-menu-panel')).toBeHidden();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('account and help submenus support Escape, outside click, hover persistence, and arrow navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=admin', 'dashboard');
+  const trigger = page.locator('#desktop-sidebar .account-summary');
+  const main = page.locator('#account-menu-panel');
+  const identity = page.locator('#account-identity-menu');
+  const help = page.locator('#account-help-menu');
+  await trigger.click();
+  await page.locator('#account-menu-header').press('ArrowRight');
+  await expect(identity).toBeVisible();
+  await expect(identity).toContainText('admin@example.org');
+  await expect(page.locator('#account-menu-header')).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(identity).toBeHidden();
+  await expect(main).toBeVisible();
+  await expect(page.locator('#account-menu-header')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-account-route="account"]')).toBeFocused();
+  await page.locator('#account-help-trigger').hover();
+  await expect(help).toBeVisible();
+  const helpBox = await help.boundingBox();
+  await page.mouse.move(helpBox.x + 20, helpBox.y + 20);
+  await expect(help).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(help).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(main).toBeHidden();
+  await trigger.click();
+  await page.locator('#page-title').click();
+  await expect(main).toBeHidden();
+  await expect(identity).toBeHidden();
+});
+
+test('account submenus follow pointer hover and close when the pointer leaves their trigger and submenu', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  const identity = page.locator('#account-identity-menu');
+  const help = page.locator('#account-help-menu');
+  await page.locator('#account-menu-header').hover();
+  await expect(identity).toBeVisible();
+  await page.locator('#account-menu-header').click();
+  await expect(identity).toBeVisible();
+  await page.locator('[data-account-route="account"]').hover();
+  await expect(identity).toBeVisible();
+  await page.locator('#account-menu-header').click();
+  await expect(identity).toBeVisible();
+  await page.locator('#account-menu-header').click();
+  await expect(identity).toBeHidden();
+  await page.locator('[data-account-route="account"]').hover();
+  await page.locator('#account-menu-header').hover();
+  await expect(identity).toBeVisible();
+  await page.locator('[data-account-route="account"]').hover();
+  await expect(identity).toBeHidden();
+  await page.locator('#account-help-trigger').hover();
+  await expect(help).toBeVisible();
+  await page.locator('[data-account-route="account"]').hover();
+  await expect(help).toBeHidden();
+  await page.locator('#account-help-trigger').click();
+  await expect(help).toBeVisible();
+});
+
+test('account menu routes to the profile, shows admin actions only to admins, and uses existing logout', async ({ page }) => {
+  await openAuthenticated(page, '/?view=dashboard&role=admin', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await expect(page.locator('[data-account-route="admin"]')).toBeVisible();
+  await page.locator('[data-account-route="account"]').click();
+  await expect(page.locator('#account-heading')).toBeVisible();
+  await expect(page.locator('#account-menu-panel')).toBeHidden();
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await page.locator('[data-account-command="logout"]').click();
+  await expect(page.locator('#access-state')).toBeVisible();
+  const methods = await page.evaluate(() => window.__CRS_TEST__.calls.map((call) => call.method));
+  expect(methods).toContain('logoutSession');
+});
+
+test('settings language picker searches, scrolls, persists, and translates help labels', async ({ page }) => {
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await page.locator('[data-account-route="settings"]').click();
+  await expect(page.locator('#settings-heading')).toHaveText('General');
+  await expect(page.locator('.settings-language-copy')).toContainText('Language for the app UI');
+
+  const trigger = page.locator('#language-trigger');
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  const list = page.locator('#language-list');
+  const displayedLanguages = await list.locator('[data-language-code]').allTextContents();
+  expect(displayedLanguages[0]).toBe('Auto detect');
+  expect(displayedLanguages.slice(1)).toEqual(displayedLanguages.slice(1).sort((a, b) =>
+    a.localeCompare(b, 'en', { sensitivity: 'base' })));
+  const initialScroll = await list.evaluate((element) => ({
+    height: element.clientHeight, content: element.scrollHeight
+  }));
+  expect(initialScroll.content).toBeGreaterThan(initialScroll.height);
+  await list.hover();
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  const search = page.locator('#language-search');
+  await search.fill('English');
+  await expect(list.locator('[data-language-code]')).toHaveCount(1);
+  await list.locator('[data-language-code="en"]').click();
+  await expect(trigger).toHaveText(/English/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.locator('#account-shortcuts-title')).toHaveText('Keyboard Shortcuts');
+  await expect(page.locator('[data-help-link="helpCenter"] [data-language-text]')).toHaveText('Help Center');
+  await expect(page.locator('#account-help-trigger [data-language-text]')).toHaveText('Help');
+  await expect(page.locator('#account-help-menu')).toHaveAttribute('aria-label', 'Help');
+  await page.reload();
+  await signInWithServerOAuth(page);
+  await expect(page.locator('#language-trigger')).toHaveText(/English/);
+
+  await page.locator('#language-trigger').click();
+  await page.locator('#language-search').fill('Deutsch');
+  await page.locator('[data-language-code="de"]').click();
+  await expect(page.locator('.settings-language-note')).toBeVisible();
+  await expect(page.locator('#account-shortcuts-title')).toHaveText('คีย์ลัด');
+  await page.locator('#language-trigger').click();
+  await page.locator('#language-search').fill('ไทย');
+  await page.locator('[data-language-code="th"]').click();
+  await expect(page.locator('.settings-language-note')).toBeHidden();
+  await expect(page.locator('[data-help-link="helpCenter"] [data-language-text]')).toHaveText('ศูนย์ช่วยเหลือ');
+  await page.locator('#language-trigger').click();
+  await page.locator('#language-search').fill('Auto detect');
+  await page.locator('[data-language-code="auto"]').click();
+  const browserLanguage = await page.evaluate(() => navigator.language.split('-')[0].toLowerCase());
+  await expect(page.locator('html')).toHaveAttribute('lang', browserLanguage === 'en' ? 'en' : 'th');
+});
+
+test('language picker closes by Escape or outside click and settings remains reachable on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 650 });
+  await openAuthenticated(page, '/?view=account&role=user', 'account');
+  await page.locator('#view-root [data-route="settings"]').click();
+  await expect(page.locator('#settings-heading')).toBeVisible();
+  await page.locator('#language-trigger').click();
+  await expect(page.locator('#language-search')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#language-dropdown')).toBeHidden();
+  await expect(page.locator('#language-trigger')).toBeFocused();
+  await page.locator('#language-trigger').click();
+  await page.locator('#settings-heading').click();
+  await expect(page.locator('#language-dropdown')).toBeHidden();
+  await page.locator('#language-trigger').click();
+  await page.setViewportSize({ width: 320, height: 650 });
+  const dropdown = await page.locator('#language-dropdown').boundingBox();
+  expect(dropdown.x).toBeGreaterThanOrEqual(0);
+  expect(dropdown.x + dropdown.width).toBeLessThanOrEqual(320);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('settings has its own sidebar, section navigation, appearance control, and a back-to-app action', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await page.locator('[data-account-route="settings"]').click();
+  await expect(page.locator('#app-shell')).toHaveClass(/is-settings-route/);
+  await expect(page.locator('#desktop-sidebar')).toBeHidden();
+  await expect(page.locator('#settings-sidebar')).toBeVisible();
+  await expect(page.locator('[data-settings-section]')).toHaveCount(8);
+  await expect(page.locator('[data-settings-section="general"]')).toHaveAttribute('aria-current', 'page');
+
+  await page.locator('#settings-sidebar-toggle').click();
+  await expect(page.locator('.settings-page')).toHaveClass(/is-sidebar-collapsed/);
+  await page.locator('#settings-sidebar-toggle').click();
+  await expect(page.locator('.settings-page')).not.toHaveClass(/is-sidebar-collapsed/);
+
+  await page.locator('#settings-nav-search').fill('security');
+  await expect(page.locator('[data-settings-section="general"]')).toBeHidden();
+  await expect(page.locator('[data-settings-section="security"]')).toBeVisible();
+  await page.locator('#settings-nav-search').fill('');
+  await page.locator('[data-settings-section="appearance"]').click();
+  await expect(page.locator('#settings-heading')).toHaveText('Appearance');
+  await page.locator('[data-settings-theme="dark"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-bs-theme', 'dark');
+  await page.locator('[data-settings-section="keyboard"]').click();
+  await expect(page.locator('#settings-heading')).toHaveText('Keyboard Shortcuts');
+  await expect(page.locator('.settings-keyboard-card')).toBeVisible();
+  await expect(page.locator('#account-shortcuts-overlay')).toBeHidden();
+  await expect(page.locator('.settings-keyboard-card .account-shortcut-row')).toHaveCount(5);
+  const inlineKey = page.locator('[data-settings-shortcut-key]');
+  await inlineKey.click();
+  await expect(inlineKey).toHaveText('Press Key sequence');
+  await page.keyboard.press('Control+Shift+K');
+  await expect(inlineKey).toHaveText('Ctrl + Shift + K');
+  await page.locator('[data-settings-shortcut-enabled]').click();
+  await expect(page.locator('[data-settings-shortcut-enabled]')).toHaveAttribute('aria-checked', 'false');
+  await page.locator('[data-settings-shortcut-restore]').click();
+  await expect(inlineKey).toHaveText('Ctrl + Shift + S');
+  await expect(page.locator('[data-settings-shortcut-enabled]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('#settings-back-to-app').click();
+  await expect(page.locator('#page-dashboard')).toBeVisible();
+  await expect(page.locator('#app-shell')).not.toHaveClass(/is-settings-route/);
+  await expect(page.locator('#desktop-sidebar')).toBeVisible();
+});
+
+test('settings sidebar works as a mobile drawer without overflowing the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await openAuthenticated(page, '/?view=settings&role=user', 'settings');
+  await expect(page.locator('#settings-heading')).toHaveText('General');
+  await expect(page.locator('#settings-sidebar')).toHaveAttribute('aria-hidden', 'true');
+  await page.locator('#settings-mobile-toggle').click();
+  await expect(page.locator('.settings-page')).toHaveClass(/is-mobile-sidebar-open/);
+  await expect(page.locator('#settings-sidebar')).not.toHaveAttribute('aria-hidden');
+  await expect(page.locator('#settings-sidebar')).toBeInViewport();
+  await page.locator('[data-settings-section="notifications"]').click();
+  await expect(page.locator('#settings-heading')).toHaveText('Notifications');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.locator('#settings-mobile-toggle').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.settings-page')).not.toHaveClass(/is-mobile-sidebar-open/);
+  await expect(page.locator('#settings-sidebar')).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('Help is Thai for Thai Auto detect and switches only when English is selected', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'language', { configurable: true, get: () => 'th-TH' });
+  });
+  await openAuthenticated(page, '/?view=settings&role=user', 'settings');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'th');
+  await expect(page.locator('#account-help-trigger [data-language-text]')).toHaveText('ช่วยเหลือ');
+  await expect(page.locator('#account-help-menu [data-language-text="helpCenter"]')).toHaveText('ศูนย์ช่วยเหลือ');
+  await page.locator('#language-trigger').click();
+  await page.locator('[data-language-code="en"]').click();
+  await expect(page.locator('#account-help-trigger [data-language-text]')).toHaveText('Help');
+  await expect(page.locator('#account-help-menu [data-language-text="helpCenter"]')).toHaveText('Help Center');
+  await page.locator('#language-trigger').click();
+  await page.locator('[data-language-code="auto"]').click();
+  await expect(page.locator('#account-help-trigger [data-language-text]')).toHaveText('ช่วยเหลือ');
+});
+
+test('account switch returns to existing Google sign-in and retains user role restrictions', async ({ page }) => {
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await expect(page.locator('[data-account-route="admin"]')).toBeHidden();
+  await page.locator('#account-menu-header').click();
+  await page.locator('[data-account-command="switch"]').click();
+  await expect(page.locator('#access-state')).toBeVisible();
+  await page.locator('#google-signin-button').click();
+  await expect(page.locator('#oauth-handoff-panel')).toBeVisible();
+  const methods = await page.evaluate(() => window.__CRS_TEST__.calls.map((call) => call.method));
+  expect(methods.filter((method) => method === 'logoutSession')).toHaveLength(1);
+  expect(methods.filter((method) => method === 'beginOAuthSignIn')).toHaveLength(2);
+});
+
+test('collapsed desktop account popover follows its trigger and mobile keeps the account route', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar-toggle').click();
+  await expect(page.locator('#app-shell')).toHaveClass(/is-sidebar-collapsed/);
+  const desktopTrigger = page.locator('#desktop-sidebar .account-summary');
+  await desktopTrigger.click();
+  const desktopTriggerBox = await desktopTrigger.boundingBox();
+  const desktopPanelBox = await page.locator('#account-menu-panel').boundingBox();
+  expect(Math.abs(desktopPanelBox.x - desktopTriggerBox.x)).toBeLessThanOrEqual(10);
+  expect(desktopPanelBox.y + desktopPanelBox.height).toBeLessThanOrEqual(desktopTriggerBox.y);
+  await page.locator('#account-menu-header').click();
+  await expect(page.locator('#account-identity-menu')).toHaveAttribute('data-side', 'right');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+
+  await page.setViewportSize({ width: 360, height: 640 });
+  await expect(page.locator('#topbar-account')).toHaveCount(0);
+  await expect(page.locator('.account-summary')).toHaveCount(1);
+  await page.locator('#mobile-nav [data-route="account"]').click();
+  await expect(page.locator('#account-heading')).toBeVisible();
+});
+
+test('sidebar header keeps an SVG-ready brand and reveals its toggle on collapsed hover or focus', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  const header = page.locator('#desktop-sidebar .sidebar-header');
+  const brand = header.locator('.brand-mark');
+  const brandLink = header.locator('.brand-link');
+  const toggle = page.locator('#desktop-sidebar-toggle');
+  await expect(header.locator('#desktop-sidebar-toggle')).toHaveCount(1);
+  await expect(header.locator('[data-app-short-name], [data-app-name]')).toHaveCount(0);
+  await expect(page.locator('.app-topbar #desktop-sidebar-toggle')).toHaveCount(0);
+
+  await brand.evaluate((element) => {
+    element.innerHTML = '<svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="18"/></svg>';
+  });
+  const svg = brand.locator('svg');
+  await expect(svg).toBeVisible();
+  const brandBox = await brand.boundingBox();
+  const svgBox = await svg.boundingBox();
+  expect(svgBox.width).toBe(brandBox.width);
+  expect(svgBox.height).toBe(brandBox.height);
+
+  await toggle.click();
+  await expect(page.locator('#app-shell')).toHaveClass(/is-sidebar-collapsed/);
+  await expect(brandLink).toHaveCSS('opacity', '1');
+  await expect(toggle).toHaveCSS('opacity', '0');
+  await expect(brandLink).toHaveAttribute('tabindex', '-1');
+  const collapsedBrandBox = await brand.boundingBox();
+  await page.mouse.move(collapsedBrandBox.x + collapsedBrandBox.width / 2,
+    collapsedBrandBox.y + collapsedBrandBox.height / 2);
+  await expect(brandLink).toHaveCSS('opacity', '0');
+  await expect(toggle).toHaveCSS('opacity', '1');
+  await expect(toggle).toHaveAttribute('title', "Toggle sidebar 'Ctrl + Shift + S'");
+  await toggle.click();
+  await expect(page.locator('#app-shell')).not.toHaveClass(/is-sidebar-collapsed/);
+  await expect(brandLink).toHaveAttribute('tabindex', '0');
+
+  await toggle.click();
+  await page.mouse.move(600, 200);
+  await expect(brandLink).toHaveCSS('opacity', '1');
+  await page.locator('#desktop-nav .sidebar-link').first().focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveCSS('opacity', '1');
+});
+
+test('account submenu flips left near the viewport edge and trigger supports Space', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  const trigger = page.locator('#desktop-sidebar .account-summary');
+  await trigger.evaluate((element) => {
+    element.style.position = 'fixed';
+    element.style.left = '1060px';
+    element.style.top = '700px';
+    element.style.width = '200px';
+    element.style.zIndex = '1200';
+  });
+  await trigger.focus();
+  await page.keyboard.press('Space');
+  await expect(page.locator('#account-menu-panel')).toBeVisible();
+  await page.locator('#account-menu-header').press('ArrowRight');
+  await expect(page.locator('#account-identity-menu')).toHaveAttribute('data-side', 'left');
+  const mainBox = await page.locator('#account-menu-panel').boundingBox();
+  const submenuBox = await page.locator('#account-identity-menu').boundingBox();
+  expect(submenuBox.x + submenuBox.width).toBeLessThan(mainBox.x);
+});
+
+test('help links remain disabled until configured, then open safely in a new tab', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.CRS_HELP_LINKS = { helpCenter: 'https://example.org/help', terms: 'javascript:alert(1)' };
+  });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await page.locator('#account-help-trigger').click();
+  await expect(page.locator('[data-help-link="helpCenter"]')).toHaveAttribute('href', 'https://example.org/help');
+  await expect(page.locator('[data-help-link="helpCenter"]')).toHaveAttribute('target', '_blank');
+  await expect(page.locator('[data-help-link="helpCenter"]')).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(page.locator('[data-help-link="terms"]')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('[data-help-link="terms"]')).not.toHaveAttribute('href');
+  await expect(page.locator('[data-help-link="releaseNotes"]')).toHaveAttribute('aria-disabled', 'true');
+});
+
+test('account menu text and states meet AA contrast in light and dark themes', async ({ page }) => {
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((value) => { document.documentElement.dataset.bsTheme = value; }, theme);
+    const ratios = await page.evaluate(() => {
+      function luminance(rgb) {
+        const channels = rgb.match(/[\d.]+/g).slice(0, 3).map((value) => {
+          const channel = Number(value) / 255;
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      }
+      function contrast(first, second) {
+        const values = [luminance(first), luminance(second)].sort((a, b) => b - a);
+        return (values[0] + 0.05) / (values[1] + 0.05);
+      }
+      const panel = document.getElementById('account-menu-panel');
+      const item = panel.querySelector('[data-account-route="account"]');
+      const secondary = panel.querySelector('[data-session-role]');
+      const utility = panel.querySelector('[data-account-command="logout"]');
+      const background = getComputedStyle(panel).backgroundColor;
+      return [item, secondary, utility].map((element) => contrast(getComputedStyle(element).color, background));
+    });
+    for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test('shortcut key buttons capture input, rebind only the app action, and keep the dialog aligned', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await page.locator('#account-help-trigger').click();
+  await page.locator('[data-account-command="shortcuts"]').click();
+
+  const dialog = page.locator('.account-shortcuts-dialog');
+  const titleBox = await page.locator('#account-shortcuts-title').boundingBox();
+  const dialogBox = await dialog.boundingBox();
+  const restoreBox = await page.locator('[data-account-shortcuts-restore]').boundingBox();
+  expect(Math.abs(titleBox.x + titleBox.width / 2 - (dialogBox.x + dialogBox.width / 2))).toBeLessThan(1);
+  expect(restoreBox.x + restoreBox.width).toBeGreaterThan(dialogBox.x + dialogBox.width - 35);
+  await expect(dialog.locator('kbd')).toHaveCount(0);
+  await expect(dialog.locator('[data-shortcut-key]')).toHaveCount(5);
+
+  const fixedKey = page.locator('[data-shortcut-key="tab"]');
+  await expect(fixedKey).toHaveText('Tab');
+  for (const key of ['tab', 'shift-tab', 'enter', 'escape']) {
+    await expect(page.locator(`[data-shortcut-key="${key}"]`)).toBeDisabled();
+  }
+  await expect(page.locator('#account-shortcut-status')).not.toContainText('Press Key sequence');
+
+  const appKey = page.locator('[data-shortcut-key="sidebar"]');
+  await appKey.click();
+  await expect(appKey).toHaveText('Press Key sequence');
+  await page.keyboard.press('Control+Shift+K');
+  await expect(appKey).toHaveText('Ctrl + Shift + K');
+  await expect(page.locator('#desktop-sidebar-toggle')).toHaveAttribute('title', "Toggle sidebar 'Ctrl + Shift + K'");
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#account-shortcuts-overlay')).toBeHidden();
+  await page.keyboard.press('Control+Shift+S');
+  await expect(page.locator('#app-shell')).not.toHaveClass(/is-sidebar-collapsed/);
+  await page.keyboard.press('Control+Shift+K');
+  await expect(page.locator('#app-shell')).toHaveClass(/is-sidebar-collapsed/);
+
+  await page.locator('[data-account-command="shortcuts"]').click();
+  await expect(appKey).toHaveText('Ctrl + Shift + K');
+  await page.locator('[data-account-shortcuts-restore]').click();
+  await expect(appKey).toHaveText('Ctrl + Shift + S');
+  await expect(page.locator('#sidebar-shortcut-enabled')).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+Shift+S');
+  await expect(page.locator('#app-shell')).not.toHaveClass(/is-sidebar-collapsed/);
+});
+
+test('keyboard shortcuts dialog traps focus, closes accessibly, and restores sidebar shortcut', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openAuthenticated(page, '/?view=dashboard&role=user', 'dashboard');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await page.locator('#account-help-trigger').click();
+  const shortcutItem = page.locator('[data-account-command="shortcuts"]');
+  await shortcutItem.click();
+  const overlay = page.locator('#account-shortcuts-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(page.locator('#account-shortcuts-title')).toBeVisible();
+  await expect(page.locator('[data-account-shortcuts-close]')).toBeFocused();
+  await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('[data-account-shortcuts-restore]')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('[data-account-shortcuts-close]')).toBeFocused();
+  await page.locator('#sidebar-shortcut-enabled').click();
+  await expect(page.locator('#sidebar-shortcut-enabled')).toHaveAttribute('role', 'switch');
+  await expect(page.locator('#sidebar-shortcut-enabled')).toHaveAttribute('aria-checked', 'false');
+  await page.keyboard.press('Escape');
+  await expect(overlay).toBeHidden();
+  await page.keyboard.press('Control+Shift+S');
+  await expect(page.locator('#app-shell')).not.toHaveClass(/is-sidebar-collapsed/);
+  await shortcutItem.click();
+  await page.locator('[data-account-shortcuts-restore]').click();
+  await expect(page.locator('#sidebar-shortcut-enabled')).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(overlay).toBeHidden();
+  await expect(shortcutItem).toBeFocused();
+  await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden');
+
+  await shortcutItem.click();
+  await page.mouse.click(2, 2);
+  await expect(overlay).toBeHidden();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.locator('#desktop-sidebar .account-summary').click();
+  await page.locator('#account-help-trigger').click();
+  await page.locator('[data-account-command="shortcuts"]').click();
+  await page.setViewportSize({ width: 360, height: 320 });
+  const bounds = await page.locator('.account-shortcuts-dialog').boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(360);
+  expect(bounds.y).toBeGreaterThanOrEqual(0);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(320);
+  const body = page.locator('.account-shortcuts-body');
+  const scrollState = await body.evaluate((element) => {
+    const before = element.scrollTop;
+    element.scrollTop = element.scrollHeight;
+    return { before, after: element.scrollTop, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+  });
+  expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.clientHeight);
+  expect(scrollState.after).toBeGreaterThan(scrollState.before);
+  await expect(page.locator('[data-account-shortcuts-restore]')).toBeInViewport();
+  await page.setViewportSize({ width: 320, height: 320 });
+  await page.locator('[data-shortcut-key="sidebar"]').click();
+  await expect(page.locator('[data-shortcut-key="sidebar"]')).toHaveText('Press Key sequence');
+  const horizontalOverflow = await body.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
 });

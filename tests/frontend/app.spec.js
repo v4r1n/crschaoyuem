@@ -612,6 +612,28 @@ test('equipment detail renders QR, downloads a sticker, copies its URL, and hand
   expect(pageErrors).toEqual([]);
 });
 
+test('account-routed browser paths cannot leak into QR, shared or navigation links', async ({ page }) => {
+  await openAuthenticated(page, routeUrl('equipment-detail'), 'equipment-detail');
+  const canonical = 'https://script.google.com/macros/s/crs-test/exec';
+  for (const account of [0, 1, 2]) {
+    await page.evaluate(({ account, canonical }) => {
+      const routed = canonical.replace('/macros/s/', `/macros/u/${account}/s/`);
+      window.CRS.state.bootstrap.app.webAppUrl = routed;
+      history.replaceState({}, '', `/macros/u/${account}/s/crs-test/exec`);
+      window.CRS.navigate('equipment-detail', { id: 'AST-000001' });
+    }, { account, canonical });
+    await expect(page.locator('#equipment-qr-content canvas')).toBeVisible();
+    const detailUrl = `${canonical}?view=equipment-detail&id=AST-000001`;
+    await expect(page.locator('[data-action="copy-equipment-link"]')).toHaveAttribute('data-qr-url', detailUrl);
+    await page.locator('[data-action="copy-equipment-link"]').click();
+    await expect.poll(() => page.evaluate(() => window.__CRS_TEST__.clipboard)).toBe(detailUrl);
+    const navigationLinks = await page.locator('a[data-route]').evaluateAll((links) =>
+      links.map((link) => link.href));
+    expect(navigationLinks.every((url) => url.startsWith(`${canonical}?view=`))).toBe(true);
+    expect(navigationLinks.join(' ')).not.toMatch(/\/macros\/u\/[012]\//);
+  }
+});
+
 test('scanner provides local file validation and a safe manual Asset ID fallback', async ({ page }) => {
   const pageErrors = collectPageErrors(page);
   await page.setViewportSize({ width: 320, height: 740 });

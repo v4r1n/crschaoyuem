@@ -310,7 +310,7 @@ test('server QR base accepts only the current canonical Apps Script exec URL', (
   const context = loadServerContext();
   const base = 'https://script.google.com/macros/s/AKfycbDeployment_123/exec';
   const other = 'https://script.google.com/macros/s/AKfycbOther_456/exec';
-  let configured = '';
+  let configured = base;
   let detected = base;
   context.getRuntimeConfig_ = () => ({ WEB_APP_URL: configured });
   context.ScriptApp = { getService: () => ({ getUrl: () => detected }) };
@@ -346,6 +346,35 @@ test('server QR base accepts only the current canonical Apps Script exec URL', (
     configured = value;
     assert.equal(context.getWebAppBaseUrl_(), '', value);
   }
+});
+
+test('account-routed Google URLs never become generated equipment links', () => {
+  const context = loadServerContext();
+  const base = 'https://script.google.com/macros/s/AKfycbDeployment_123/exec';
+  let configured = base;
+  let detected = base;
+  context.getRuntimeConfig_ = () => ({ WEB_APP_URL: configured });
+  context.ScriptApp = { getService: () => ({ getUrl: () => detected }) };
+
+  for (const account of [0, 1, 2]) {
+    const routed = base.replace('/macros/s/', `/macros/u/${account}/s/`);
+    configured = routed;
+    detected = routed;
+    assert.equal(context.getWebAppBaseUrl_(), base);
+    assert.equal(context.buildAssetUrl_('AST-000001'),
+      `${base}?view=equipment-detail&id=AST-000001`);
+  }
+
+  configured = '';
+  detected = base;
+  assert.equal(context.getWebAppBaseUrl_(), '',
+    'the service URL must not replace missing WEB_APP_URL configuration');
+
+  const stale = base.replace('/macros/s/', '/macros/u/2/s/') +
+    '?view=equipment-detail&id=AST-000001';
+  assert.equal(context.equipmentDto_({ asset_id: 'AST-000001', qr_url: stale,
+    status: 'AVAILABLE' }, {}, false).qr_url, '',
+  'a stale Sheet qr_url must not be returned when the canonical base is unavailable');
 });
 
 test('Drive sharing failures keep a stable application error code', () => {
@@ -431,6 +460,22 @@ test('QR parser accepts only an exact asset ID or canonical same-app URL', () =>
     `${base}?view=equipment-detail`,
   ];
   for (const payload of hostile) assert.equal(parse(payload), null, payload);
+
+  for (const account of [0, 1, 2]) {
+    const routed = base.replace('/macros/s/', `/macros/u/${account}/s/`);
+    window.CRS.state.bootstrap.app.webAppUrl = routed;
+    assert.equal(window.CRS.qr.canonicalAssetUrl('AST-000001'),
+      `${base}?view=equipment-detail&id=AST-000001`);
+    assert.equal(parse(`${routed}?view=equipment-detail&id=AST-000001`), null);
+  }
+});
+
+test('dashboard navigation fallback never uses the browser URL as its base', () => {
+  const dashboard = read('src/scripts-dashboard.html');
+  assert.doesNotMatch(dashboard, /location\.(?:href|pathname)\s*=/);
+  assert.doesNotMatch(dashboard, /location\.(?:href|pathname)\s*\+/);
+  assert.doesNotMatch(read('src/index.html'), /href="\?view=/);
+  assert.doesNotMatch(read('src/scripts-core.html'), /href=\\?"\?view=/);
 });
 
 test('project-authored markup keeps the QR scanner passive and HTML safe', () => {

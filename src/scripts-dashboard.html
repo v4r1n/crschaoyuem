@@ -100,7 +100,10 @@
         query.set(key, params[key]);
       }
     });
-    global.location.href = '?' + query.toString();
+    var configured = CRS.state && CRS.state.bootstrap && CRS.state.bootstrap.app.webAppUrl;
+    var match = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/
+      .exec(String(configured || ''));
+    if (match) global.location.assign(match[0] + '?' + query.toString());
   }
 
   function showState(page, state, error) {

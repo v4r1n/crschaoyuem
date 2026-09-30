@@ -134,30 +134,27 @@ function stableJson_(value) {
 
 function getWebAppBaseUrl_() {
   var configuredRaw = getRuntimeConfig_().WEB_APP_URL;
+  // WEB_APP_URL is the sole link source. The service URL only verifies that
+  // the configured deployment is the one currently executing.
+  var configured = normalizeWebAppExecUrl_(configuredRaw);
+  if (!configured) return '';
   var detectedRaw = '';
   try { detectedRaw = ScriptApp.getService().getUrl() || ''; }
   catch (ignored) { detectedRaw = ''; }
-  var configured = normalizeWebAppExecUrl_(configuredRaw);
   var detected = normalizeWebAppExecUrl_(detectedRaw);
-
-  // An explicitly configured value is authoritative but must identify the same
-  // deployed Apps Script service whenever Apps Script can report its /exec URL.
-  // A /dev URL is deliberately ignored as detection and never becomes a QR base.
-  if (String(configuredRaw || '').trim()) {
-    if (!configured || (detected && configured !== detected)) return '';
-    return configured;
-  }
-  return detected;
+  // A /dev URL cannot verify an /exec deployment; it is never a link base.
+  return detected && configured !== detected ? '' : configured;
 }
 
 function normalizeWebAppExecUrl_(value) {
   var candidate = String(value || '').trim();
-  // QR links are security-sensitive navigation inputs. Accept only Google's
-  // canonical versioned Web app endpoint, never /dev, redirect hosts, or aliases.
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec\/?$/.test(candidate)) {
+  // Google can insert a numbered account route in the browser/service URL.
+  // Strip only that exact Google route; never persist it in a QR/share link.
+  var match = /^https:\/\/script\.google\.com\/macros\/(?:u\/\d+\/)?s\/([A-Za-z0-9_-]+)\/exec\/?$/.exec(candidate);
+  if (!match) {
     return '';
   }
-  return candidate.replace(/\/$/, '');
+  return 'https://script.google.com/macros/s/' + match[1] + '/exec';
 }
 
 function buildAssetUrl_(assetId) {

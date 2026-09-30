@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Equipment QR, copied share links, and navigation anchors now use only the configured canonical `/macros/s/{DEPLOYMENT_ID}/exec` URL; numbered `/macros/u/{number}/` account routes are normalized and stale stored `qr_url` values are never exposed as fallback.
 - Image uploads reuse an already-correct inherited Drive sharing setting, reject an over-shared image folder before starting an operation, and safely abort an untouched upload when Drive rejects sharing so equipment editing is not blocked.
 - Equipment image uploader uses a keyboard-accessible drag-and-drop/browse zone with an in-place preview and accepts GIF files after server-side signature validation.
 - Source-controlled app version is `0.1.7` for the next Apps Script release; the displayed version no longer depends on a Script Property override.

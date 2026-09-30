@@ -22,16 +22,9 @@
   function baseUrl() {
     var configured = CRS.state.bootstrap && CRS.state.bootstrap.app.webAppUrl;
     if (!configured) return null;
-    try {
-      var url = new URL(text(configured).trim());
-      if (url.protocol !== 'https:' || url.username || url.password) return null;
-      url.search = '';
-      url.hash = '';
-      url.pathname = url.pathname.replace(/\/$/, '');
-      return url;
-    } catch (error) {
-      return null;
-    }
+    var match = /^https:\/\/script\.google\.com\/macros\/(?:u\/\d+\/)?s\/([A-Za-z0-9_-]+)\/exec\/?$/
+      .exec(text(configured).trim());
+    return match ? new URL('https://script.google.com/macros/s/' + match[1] + '/exec') : null;
   }
 
   function sameApplication(left, right) {

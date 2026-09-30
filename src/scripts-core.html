@@ -757,6 +757,21 @@
     global.location.hash = target.name + (query ? '?' + query : '');
   };
 
+  function syncNavigationLinks(root) {
+    const configured = CRS.state.bootstrap && CRS.state.bootstrap.app.webAppUrl;
+    const base = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/
+      .test(String(configured || '')) ? configured : '';
+    CRS.$$('a[data-route]', root).forEach(function (link) {
+      if (base) {
+        link.href = base + '?view=' + encodeURIComponent(link.dataset.route);
+        link.removeAttribute('tabindex');
+      } else {
+        link.removeAttribute('href');
+        link.tabIndex = 0;
+      }
+    });
+  }
+
   function applyActiveNavigation(route) {
     const shell = CRS.$('#app-shell');
     if (shell) shell.classList.toggle('is-settings-route', route === 'settings');
@@ -800,6 +815,7 @@
     }
     try {
       await renderer(target.params, token);
+      if (root) syncNavigationLinks(root);
     } catch (error) {
       if (token !== CRS.state.viewToken) return;
       if (root) root.innerHTML = CRS.emptyState('โหลดข้อมูลไม่สำเร็จ', error.message, 'bi-exclamation-circle');
@@ -823,7 +839,7 @@
       CRS.escapeHtml(session.department || 'ไม่ระบุ') + '</dd><dt class="col-sm-4 text-secondary">สิทธิ์</dt><dd class="col-sm-8">' +
       CRS.statusBadge(session.role) + '</dd></dl><hr><p class="small text-secondary mb-3">' +
       'ระบบยืนยันบัญชี Google ผ่าน OAuth และตรวจสิทธิ์จากรายชื่อผู้ใช้ทุกครั้ง' +
-      '</p><div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-secondary" href="?view=settings" data-route="settings">' +
+      '</p><div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-secondary" data-route="settings">' +
       '<i class="bi bi-gear me-2" aria-hidden="true"></i>การตั้งค่า</a>' +
       '<button class="btn btn-outline-danger" type="button" data-action="sign-out">' +
       '<i class="bi bi-box-arrow-right me-2" aria-hidden="true"></i>ออกจากระบบ / เปลี่ยนบัญชี' +
@@ -897,7 +913,7 @@
         'data-settings-shortcut-restore>คืนค่าเริ่มต้น / Restore defaults</button></footer></div>'
       : (sectionKey === 'profile' || sectionKey === 'account')
         ? '<div class="settings-card settings-placeholder"><p>ข้อมูลบัญชีและสิทธิ์อยู่ในหน้าบัญชีของฉัน</p>' +
-          '<a class="btn btn-outline-secondary" href="?view=account" data-route="account">ไปยังบัญชีของฉัน</a></div>'
+          '<a class="btn btn-outline-secondary" data-route="account">ไปยังบัญชีของฉัน</a></div>'
         : '<div class="settings-card settings-placeholder"><p>ยังไม่มีการตั้งค่าในส่วนนี้</p></div>';
     root.innerHTML = '<section class="settings-page' + (settingsSidebarCollapsed ? ' is-sidebar-collapsed' : '') +
       '" aria-labelledby="settings-heading">' +
@@ -1164,6 +1180,7 @@
 
   function applyBootstrap(data) {
     CRS.state.bootstrap = data;
+    syncNavigationLinks(document);
     CRS.$$('[data-app-short-name]').forEach(function (node) {
       node.textContent = data.app.shortName || 'CRS Yuem-Kuen';
     });
@@ -1262,6 +1279,12 @@
   });
 
   document.addEventListener('keydown', function (event) {
+    const routeLink = event.target.closest && event.target.closest('a[data-route]:not([href])');
+    if (routeLink && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      routeLink.click();
+      return;
+    }
     if (event.ctrlKey !== sidebarBinding.ctrl || event.shiftKey !== sidebarBinding.shift ||
       event.altKey !== sidebarBinding.alt || event.metaKey !== sidebarBinding.meta ||
       event.code !== sidebarBinding.code) return;

@@ -291,7 +291,7 @@
     }
 
     const trigger = event.target.closest && event.target.closest('[data-action="account-menu-toggle"]');
-    if (trigger && event.key === ' ') {
+    if (trigger && (event.key === ' ' || event.key === 'Enter')) {
       event.preventDefault();
       trigger.click();
       return;

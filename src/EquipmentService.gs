@@ -156,6 +156,7 @@ function updateEquipment_(input, actor) {
     }
     var before = operationBeforeState_(operation);
     var targetChanges = mergeObjects_(normalized, {
+      qr_url: buildAssetUrl_(assetId),
       updated_at: operation.started_at,
       updated_by: operation.actor_email,
       row_version: Number(before.row_version) + 1
@@ -183,7 +184,7 @@ function updateEquipment_(input, actor) {
       newStatus: updated.status,
       note: updated.note,
       changedFields: changedFields_(before, updated,
-        Object.keys(normalized).concat(['updated_at', 'updated_by', 'row_version'])),
+        Object.keys(normalized).concat(['qr_url', 'updated_at', 'updated_by', 'row_version'])),
       operationId: commandId
     }, lockedActor);
     var result = equipmentResultLocked_(assetId);
@@ -479,7 +480,9 @@ function equipmentDto_(record, categories, includeAdminFields) {
   dto.category_name = categories && categories[record.category_id]
     ? categories[record.category_id].category_name
     : '';
-  dto.qr_url = buildAssetUrl_(record.asset_id) || stripSheetEscape_(record.qr_url);
+  // Stored qr_url is only a cache and may contain an old account-routed URL.
+  // Never expose it as a fallback when canonical link generation is unavailable.
+  dto.qr_url = buildAssetUrl_(record.asset_id);
   dto.can_borrow = record.status === EQUIPMENT_STATUS.AVAILABLE && !record.active_borrow_id;
   return dto;
 }

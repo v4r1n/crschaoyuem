@@ -126,7 +126,7 @@
     <div id="app-shell" class="app-shell" aria-busy="false" hidden>
       <aside id="desktop-sidebar" class="app-sidebar d-none d-lg-flex" aria-label="เมนูหลัก">
         <div class="sidebar-header">
-          <a class="brand-link" href="?view=dashboard" data-route="dashboard" aria-label="ไปหน้าแรก">
+          <a class="brand-link" data-route="dashboard" aria-label="ไปหน้าแรก">
             <span class="brand-mark" aria-hidden="true"><i class="bi bi-box-seam"></i></span>
           </a>
           <button id="desktop-sidebar-toggle" class="sidebar-toggle d-none d-lg-inline-flex" type="button"
@@ -138,30 +138,30 @@
 
         <nav id="desktop-nav" class="sidebar-nav" aria-label="ส่วนใช้งาน">
           <p class="sidebar-section-label">เมนูหลัก</p>
-          <a class="sidebar-link" href="?view=dashboard" data-route="dashboard">
+          <a class="sidebar-link" data-route="dashboard">
             <i class="bi bi-grid-1x2" aria-hidden="true"></i>
             <span>หน้าแรก</span>
           </a>
-          <a class="sidebar-link" href="?view=equipment" data-route="equipment">
+          <a class="sidebar-link" data-route="equipment">
             <i class="bi bi-boxes" aria-hidden="true"></i>
             <span>อุปกรณ์</span>
           </a>
-          <a class="sidebar-link" href="?view=scan" data-route="scan">
+          <a class="sidebar-link" data-route="scan">
             <i class="bi bi-qr-code-scan" aria-hidden="true"></i>
             <span>สแกน QR</span>
           </a>
-          <a class="sidebar-link" href="?view=my-borrow" data-route="my-borrow">
+          <a class="sidebar-link" data-route="my-borrow">
             <i class="bi bi-arrow-left-right" aria-hidden="true"></i>
             <span>รายการยืมของฉัน</span>
           </a>
-          <a class="sidebar-link" href="?view=history" data-route="history">
+          <a class="sidebar-link" data-route="history">
             <i class="bi bi-clock-history" aria-hidden="true"></i>
             <span>ประวัติของฉัน</span>
           </a>
 
           <div class="admin-nav-group" data-admin-only hidden>
             <p class="sidebar-section-label mt-4">ผู้ดูแลระบบ</p>
-            <a class="sidebar-link" href="?view=admin" data-route="admin">
+            <a class="sidebar-link" data-route="admin">
               <i class="bi bi-shield-check" aria-hidden="true"></i>
               <span>ศูนย์ผู้ดูแล</span>
               <span class="sidebar-link-indicator" aria-hidden="true"></span>
@@ -170,7 +170,7 @@
         </nav>
 
         <div class="sidebar-footer">
-          <a class="account-summary" href="?view=account" role="button" data-action="account-menu-toggle"
+          <a class="account-summary" role="button" tabindex="0" data-action="account-menu-toggle"
              aria-label="เปิดเมนูบัญชี" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu-panel">
             <span class="user-avatar" data-session-initial aria-hidden="true">—</span>
             <span class="account-summary-copy">
@@ -213,23 +213,23 @@
       </div>
 
       <nav id="mobile-nav" class="mobile-bottom-nav d-lg-none" aria-label="เมนูหลักบนโทรศัพท์">
-        <a class="mobile-nav-link" href="?view=dashboard" data-route="dashboard">
+        <a class="mobile-nav-link" data-route="dashboard">
           <i class="bi bi-house-door" aria-hidden="true"></i>
           <span>หน้าแรก</span>
         </a>
-        <a class="mobile-nav-link" href="?view=equipment" data-route="equipment">
+        <a class="mobile-nav-link" data-route="equipment">
           <i class="bi bi-boxes" aria-hidden="true"></i>
           <span>อุปกรณ์</span>
         </a>
-        <a class="mobile-nav-link mobile-scan-link" href="?view=scan" data-route="scan" aria-label="สแกน QR Code">
+        <a class="mobile-nav-link mobile-scan-link" data-route="scan" aria-label="สแกน QR Code">
           <span class="mobile-scan-button" aria-hidden="true"><i class="bi bi-qr-code-scan"></i></span>
           <span>Scan</span>
         </a>
-        <a class="mobile-nav-link" href="?view=my-borrow" data-route="my-borrow">
+        <a class="mobile-nav-link" data-route="my-borrow">
           <i class="bi bi-arrow-left-right" aria-hidden="true"></i>
           <span>รายการยืม</span>
         </a>
-        <a class="mobile-nav-link" href="?view=account" data-route="account">
+        <a class="mobile-nav-link" data-route="account">
           <i class="bi bi-person" aria-hidden="true"></i>
           <span>บัญชี</span>
         </a>

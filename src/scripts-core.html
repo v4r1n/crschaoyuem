@@ -528,7 +528,8 @@
       return result;
     } catch (error) {
       const afterError = readCommands();
-      if (definitivePrestartErrors.indexOf(error.code) !== -1) {
+      if (definitivePrestartErrors.indexOf(error.code) !== -1 ||
+          (error.code === 'DRIVE_SHARING_FAILED' && error.retryable === false)) {
         delete afterError[key];
       } else if (afterError[key]) {
         afterError[key].locked = true;

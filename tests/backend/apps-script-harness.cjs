@@ -674,8 +674,11 @@ function createAppsScriptHarness(options = {}) {
       }
     },
     DriveApp: {
-      Access: { DOMAIN_WITH_LINK: 'DOMAIN_WITH_LINK', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK' },
-      Permission: { VIEW: 'VIEW' },
+      Access: {
+        ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK',
+        DOMAIN: 'DOMAIN', DOMAIN_WITH_LINK: 'DOMAIN_WITH_LINK', PRIVATE: 'PRIVATE'
+      },
+      Permission: { VIEW: 'VIEW', NONE: 'NONE' },
       getFolderById() { throw new Error('Drive is not available in backend unit tests'); },
       getFileById() { throw new Error('Drive is not available in backend unit tests'); }
     }

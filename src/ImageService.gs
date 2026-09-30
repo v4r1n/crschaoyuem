@@ -68,6 +68,7 @@ function uploadEquipmentImage_(input, actor) {
       var expectedVersion = Number(input.expected_version);
       if (!operation) {
         assertExpectedVersion_(current, expectedVersion);
+        assertImageFolderSharingPolicy_(getImageFolder_(folderId), sharingMode);
         operation = startOperationLocked_(spec, current);
       }
       var before = operationBeforeState_(operation);
@@ -126,6 +127,18 @@ function uploadEquipmentImage_(input, actor) {
       return result;
     });
   } catch (error) {
+    if (error && error.code === 'DRIVE_SHARING_FAILED') {
+      try {
+        var aborted = abortOperationForAdmin_({
+          operation_id: commandId,
+          reason: 'Image sharing failed before the equipment record was updated'
+        }, actor);
+        if (aborted.status === OPERATION_STATUS.ABORTED) error.retryable = false;
+      } catch (abortError) {
+        console.warn('Image upload operation could not be automatically cancelled: ' +
+          String(abortError && abortError.message ? abortError.message : abortError));
+      }
+    }
     if (newFile && !resourceStored) trashNewImageQuietly_(newFile);
     throw error;
   }
@@ -198,6 +211,31 @@ function getImageFolder_(folderId) {
   }
 }
 
+function assertImageFolderSharingPolicy_(folder, sharingMode) {
+  var access;
+  var permission;
+  try {
+    access = folder.getSharingAccess();
+    permission = folder.getSharingPermission();
+  } catch (error) {
+    throw new AppError_('CONFIG_ERROR',
+      'ไม่สามารถตรวจสิทธิ์โฟลเดอร์ภาพได้ กรุณาตรวจ DRIVE_FOLDER_ID และสิทธิ์ของบัญชีที่ deploy', {
+        cause: String(error && error.message ? error.message : error)
+      }, false);
+  }
+  var broaderAccess = access === DriveApp.Access.ANYONE ||
+    (sharingMode === 'DOMAIN_WITH_LINK' &&
+      (access === DriveApp.Access.ANYONE_WITH_LINK || access === DriveApp.Access.DOMAIN));
+  var elevatedPermission = access !== DriveApp.Access.PRIVATE &&
+    permission !== DriveApp.Permission.VIEW;
+  assertApp_(!broaderAccess && !elevatedPermission, 'CONFIG_ERROR',
+    'สิทธิ์โฟลเดอร์ภาพกว้างกว่า IMAGE_SHARING ที่กำหนด กรุณาปรับสิทธิ์โฟลเดอร์หรือนโยบายข้อมูลก่อนอัปโหลด', {
+      imageSharing: sharingMode,
+      folderAccess: String(access),
+      folderPermission: String(permission)
+    }, false);
+}
+
 function getImageFileIfPresent_(fileId) {
   try {
     var file = DriveApp.getFileById(fileId);
@@ -261,11 +299,20 @@ function applyImageSharing_(file, sharingMode) {
     expectedAccess = DriveApp.Access.ANYONE_WITH_LINK;
   }
   try {
+    var actualAccess = file.getSharingAccess();
+    var actualPermission = file.getSharingPermission();
+    if (actualAccess === expectedAccess && actualPermission === DriveApp.Permission.VIEW) return;
     file.setSharing(expectedAccess, DriveApp.Permission.VIEW);
-    assertApp_(file.getSharingAccess() === expectedAccess &&
-      file.getSharingPermission() === DriveApp.Permission.VIEW,
+    actualAccess = file.getSharingAccess();
+    actualPermission = file.getSharingPermission();
+    assertApp_(actualAccess === expectedAccess &&
+      actualPermission === DriveApp.Permission.VIEW,
       'DRIVE_SHARING_FAILED',
-      'ไม่สามารถตั้งค่าสิทธิ์ไฟล์ภาพตามนโยบายที่กำหนดได้', null, true);
+      'ไม่สามารถตั้งค่าสิทธิ์ไฟล์ภาพตามนโยบายที่กำหนดได้', {
+        expectedAccess: String(expectedAccess),
+        actualAccess: String(actualAccess),
+        actualPermission: String(actualPermission)
+      }, true);
   } catch (error) {
     if (error && error.name === 'AppError') throw error;
     throw new AppError_('DRIVE_SHARING_FAILED',

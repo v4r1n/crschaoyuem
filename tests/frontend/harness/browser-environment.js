@@ -200,7 +200,7 @@
       app: {
         name: 'CRS Yuem-Kuen System',
         shortName: 'CRS Yuem-Kuen',
-        version: '0.1.7',
+        version: '0.1.8',
         timezone: 'Asia/Bangkok',
         locale: 'th-TH',
         webAppUrl: controls.get('qr') === 'unset'

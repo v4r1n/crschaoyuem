@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### 0.1.10 (2026-10-01)
 
+- Deployed as Apps Script v20 to the existing Pilot app and OAuth callback bridge from source commit 831b664; deployment IDs and URLs stayed the same.
 - Equipment edit and upload forms show a pending image operation and an explicit cancellation action, allowing a new upload or edit after safe abort.
 - Administrators can delete equipment with typed asset-ID confirmation. The audited operation retains the row, included items, image and History, while hiding it from ordinary listings.
 - Includes the Pilot image lifecycle recovery and integrity fixes.

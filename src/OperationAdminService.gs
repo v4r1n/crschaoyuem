@@ -33,6 +33,10 @@ function getOperationDetailForAdmin_(operationId, actor) {
     .indexOf(operation.status) !== -1
     ? operationResult_(operation)
     : null;
+  if (dto.result && operation.entity_type === 'EQUIPMENT' &&
+    hasOwn_(dto.result, 'image_file_id')) {
+    dto.result = mergeObjects_(dto.result, equipmentImageState_(dto.result.image_file_id));
+  }
   return dto;
 }
 
@@ -74,6 +78,11 @@ function reconcileOperationForAdmin_(operationId, actor) {
       note: payload.note,
       command_id: commandId
     }, actor);
+  }
+  if (operation.action === 'DELETE_ASSET') {
+    result = deleteEquipment_({ asset_id: payload.assetId,
+      expected_version: payload.expectedVersion, command_id: commandId,
+      confirm: true, confirm_asset_id: payload.assetId }, actor);
   }
   if (operation.action === 'BORROW_REQUEST') {
     result = createBorrowRequest_({
@@ -151,7 +160,15 @@ function reconcileOperationForAdmin_(operationId, actor) {
     }), actor);
   }
   if (operation.action === 'UPLOAD_ASSET_IMAGE') {
-    result = reconcileImageOperationForAdmin_(commandId, actor);
+    try {
+      result = reconcileImageOperationForAdmin_(commandId, actor);
+    } catch (error) {
+      if (!error || error.code !== 'UPLOAD_RETRY_REQUIRED') throw error;
+      return abortOperationForAdmin_({
+        operation_id: commandId,
+        reason: 'Pinned image is missing or inaccessible before equipment update'
+      }, actor);
+    }
   }
   if (operation.action === 'AUTO_PROVISION_USER') {
     result = reconcileAutoProvisionOperationForAdmin_(commandId, actor);
@@ -167,6 +184,7 @@ function abortOperationForAdmin_(input, actor) {
   input = input || {};
   var operationId = requireCommandId_(input.operation_id);
   var reason = stripSheetEscape_(requireText_(input.reason, 'reason', 'เหตุผลที่ยกเลิก', 500));
+  var allowUnverifiedCleanup = input.allow_unverified_cleanup === true;
   return withAdminMutation_(actor, function (lockedActor) {
     var operation = findRecordById_(SHEETS.OPERATIONS, 'operation_id', operationId);
     assertApp_(operation, 'NOT_FOUND', 'ไม่พบ operation ที่ต้องการยกเลิก', null, false);
@@ -182,6 +200,7 @@ function abortOperationForAdmin_(input, actor) {
       'ยกเลิกได้เฉพาะ operation อัปโหลดภาพที่ยังไม่เปลี่ยนข้อมูลอุปกรณ์', null, false);
     var payload = operationPayload_(operation);
     var before = operationBeforeState_(operation);
+    assertImageOperationIdentity_(operation, payload, before);
     var current = findRecordById_(SHEETS.EQUIPMENT, 'asset_id', operation.entity_id);
     assertApp_(current && before && operationRecordMatchesSnapshot_(
       SHEETS.EQUIPMENT, current, before),
@@ -197,7 +216,15 @@ function abortOperationForAdmin_(input, actor) {
     }
     var filename = current.asset_id + '-' + operation.operation_id + '.' +
       IMAGE_MIME_TYPES[payload.mimeType];
-    var files = folder ? listUntrashedImagesByName_(folder, filename) : [];
+    var files = [];
+    if (folder) {
+      try {
+        files = listUntrashedImagesByName_(folder, filename);
+      } catch (folderFilesError) {
+        if (!allowUnverifiedCleanup) throw folderFilesError;
+        folderLookupUncertain = true;
+      }
+    }
     var resourceLookupUncertain = false;
     if (operation.resource_id) {
       var recordedResource = inspectImageFileReference_(operation.resource_id);
@@ -209,15 +236,27 @@ function abortOperationForAdmin_(input, actor) {
         return file.getId() === operation.resource_id;
       })) resourceLookupUncertain = false;
     }
+    assertApp_(!resourceLookupUncertain || allowUnverifiedCleanup,
+      'IMAGE_FILE_UNAVAILABLE',
+      'ยังยืนยันสถานะไฟล์เดิมไม่ได้ ต้องให้ผู้ดูแลตรวจ Drive ก่อนยกเลิก operation', null, true);
     var seenFileIds = Object.create(null);
+    var verifiedFiles = [];
+    var unverifiedCleanup = false;
     files.forEach(function (file) {
       if (seenFileIds[file.getId()]) return;
       seenFileIds[file.getId()] = true;
-      assertApp_(file.getName() === filename && imageFileMatches_(
-        file, payload.digest, payload.mimeType, payload.byteLength),
-      'STATE_CONFLICT', 'พบไฟล์ของ operation ที่ไม่ตรงกับหลักฐานเดิม จึงยกเลิกอัตโนมัติไม่ได้', null, false);
+      try {
+        assertApp_(file.getName() === filename && imageFileMatches_(
+          file, payload.digest, payload.mimeType, payload.byteLength),
+        'STATE_CONFLICT', 'พบไฟล์ของ operation ที่ไม่ตรงกับหลักฐานเดิม จึงยกเลิกอัตโนมัติไม่ได้', null, false);
+        assertRecoverableImageEvidence_(file, operation, payload);
+        verifiedFiles.push(file);
+      } catch (error) {
+        if (!allowUnverifiedCleanup) throw error;
+        unverifiedCleanup = true;
+      }
     });
-    files.forEach(function (file) {
+    verifiedFiles.forEach(function (file) {
       if (!file.isTrashed()) file.setTrashed(true);
     });
     operation = abortOperationLocked_(operation, {
@@ -226,7 +265,7 @@ function abortOperationForAdmin_(input, actor) {
       entity_id: operation.entity_id,
       reason: reason,
       aborted_by: lockedActor.email,
-      orphan_cleanup_required: folderLookupUncertain || resourceLookupUncertain
+      orphan_cleanup_required: folderLookupUncertain || resourceLookupUncertain || unverifiedCleanup
     });
     return getOperationDetailForAdmin_(operationId, lockedActor);
   });
@@ -240,6 +279,7 @@ function reconcileImageOperationForAdmin_(operationId, actor) {
     'STATE_CONFLICT', 'operation อัปโหลดภาพไม่ได้อยู่ในสถานะที่กู้คืนได้', null, false);
     var payload = operationPayload_(operation);
     var before = operationBeforeState_(operation);
+    assertImageOperationIdentity_(operation, payload, before);
     var current = findRecordById_(SHEETS.EQUIPMENT, 'asset_id', operation.entity_id);
     assertApp_(current && before, 'STATE_CONFLICT', 'ไม่พบอุปกรณ์สำหรับกู้คืนภาพ', null, false);
     var atSource = equipmentImageSourceMatches_(current, before);
@@ -254,21 +294,29 @@ function reconcileImageOperationForAdmin_(operationId, actor) {
       ensureOperationHistoryLocked_(equipmentImageHistoryEntry_(
         before, current, operation, 'Uploaded equipment image'), lockedActor);
       var persistedResult = equipmentResultLocked_(current.asset_id);
-      finalizeOperationLocked_(operation, current.asset_id, persistedResult);
+      var persistedCompletion = finalizeOperationLocked_(operation, current.asset_id, persistedResult);
+      trashReplacedImageAfterCommit_(persistedCompletion, before, current);
       return persistedResult;
     }
     var filename = current.asset_id + '-' + operation.operation_id + '.' +
       IMAGE_MIME_TYPES[payload.mimeType];
-    var file = operation.resource_id ? getImageFileIfPresent_(operation.resource_id) : null;
-    if (file && !imageFileMatches_(
-      file, payload.digest, payload.mimeType, payload.byteLength)) file = null;
-    if (!file) {
+    var inspection = operation.resource_id
+      ? inspectImageFileReference_(operation.resource_id)
+      : { state: 'NONE', file: null };
+    var file = inspection.file;
+    if (operation.resource_id && inspection.state === 'UNKNOWN') {
+      throw new AppError_('IMAGE_FILE_UNAVAILABLE',
+        'ยังยืนยันไม่ได้ว่าไฟล์เดิมหายหรือเข้าถึงไม่ได้ กรุณาตรวจ Drive และยกเลิก operation หลังตรวจหลักฐาน',
+        null, true);
+    }
+    if (!file && !operation.resource_id) {
       var folder = getImageFolder_(payload.folderId || getRuntimeConfig_().DRIVE_FOLDER_ID);
       file = findRecoverableImageByName_(
         folder, filename, payload.digest, payload.mimeType, payload.byteLength);
     }
     assertApp_(file, 'UPLOAD_RETRY_REQUIRED',
       'ไม่พบไฟล์เดิม กรุณาอัปโหลดไฟล์เดิมซ้ำด้วยคำสั่งเดิม', null, true);
+    assertRecoverableImageEvidence_(file, operation, payload);
     if (operation.resource_id !== file.getId()) {
       operation = replaceOperationResourceLocked_(operation, file.getId());
     }
@@ -286,7 +334,8 @@ function reconcileImageOperationForAdmin_(operationId, actor) {
     ensureOperationHistoryLocked_(equipmentImageHistoryEntry_(
       before, current, operation, 'Uploaded equipment image'), lockedActor);
     var result = equipmentResultLocked_(current.asset_id);
-    finalizeOperationLocked_(operation, current.asset_id, result);
+    var completedOperation = finalizeOperationLocked_(operation, current.asset_id, result);
+    trashReplacedImageAfterCommit_(completedOperation, before, current);
     return result;
   });
 }

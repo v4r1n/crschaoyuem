@@ -28,12 +28,22 @@
     if (status) status.outerHTML = CRS.statusBadge(equipment.status).replace('<span ', '<span id="borrow-equipment-status" ');
     const image = CRS.$('#borrow-equipment-image', page);
     const fallback = CRS.$('#borrow-equipment-image-fallback', page);
-    const imageUrl = CRS.safeImageUrl(equipment.image_url);
-    if (image && imageUrl) {
-      image.src = imageUrl;
-      image.alt = 'รูป ' + equipment.name;
-      setVisible(image, true);
-      setVisible(fallback, false);
+    const imageUrl = equipment.imageAvailable === false ? '' : CRS.safeImageUrl(equipment.image_url);
+    if (image) {
+      image.removeAttribute('src');
+      setVisible(image, false);
+      setVisible(fallback, true);
+      image.onload = function () { setVisible(image, true); setVisible(fallback, false); };
+      image.onerror = function () {
+        image.removeAttribute('src');
+        setVisible(image, false);
+        setVisible(fallback, true);
+      };
+      if (imageUrl) {
+        image.alt = 'รูป ' + equipment.name;
+        image.referrerPolicy = 'no-referrer';
+        image.src = imageUrl;
+      }
     }
     const includedWrap = CRS.$('#borrow-included-items-wrap', page);
     const includedList = CRS.$('#borrow-included-items', page);

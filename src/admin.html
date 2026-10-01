@@ -390,6 +390,22 @@
           </div>
         </section>
 
+        <section class="card mb-4" aria-labelledby="admin-image-integrity-title">
+          <div class="card-body p-4">
+            <div class="d-flex flex-column flex-lg-row align-items-lg-start justify-content-between gap-3">
+              <div>
+                <h3 id="admin-image-integrity-title" class="h5">ตรวจสอบภาพอุปกรณ์</h3>
+                <p class="text-body-secondary mb-0">แสดงรูปที่อ้างอิงไฟล์หาย ไฟล์กำพร้า และการอัปโหลดที่ค้างอยู่ การซ่อมจะตรวจข้อมูลล่าสุดก่อนดำเนินการ</p>
+              </div>
+              <button id="admin-preview-image-integrity" type="button" class="btn btn-outline-primary flex-shrink-0"
+                      data-action="preview-image-integrity">
+                <i class="bi bi-images me-2" aria-hidden="true"></i>แสดงตัวอย่างปัญหาภาพ
+              </button>
+            </div>
+            <div id="admin-image-integrity-result" class="mt-4 d-none" aria-live="polite"></div>
+          </div>
+        </section>
+
         <section aria-labelledby="admin-operations-title">
           <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
             <h3 id="admin-operations-title" class="h5 mb-0">Operations</h3>

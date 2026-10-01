@@ -8,7 +8,9 @@ function getAdminDashboard_(actor) {
   var cached = cacheGetJson_(cacheKey, cacheEpoch);
   if (cached) return cached;
 
-  var equipment = listRecords_(SHEETS.EQUIPMENT);
+  var equipment = listRecords_(SHEETS.EQUIPMENT).filter(function (record) {
+    return record.status !== EQUIPMENT_STATUS.DELETED;
+  });
   var borrows = listRecords_(SHEETS.BORROW);
   var history = listRecords_(SHEETS.HISTORY);
   var today = todayInTimezone_();

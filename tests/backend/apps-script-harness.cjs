@@ -24,6 +24,7 @@ const PUBLIC_RPC_NAMES = Object.freeze([
   'adminCreateCategory',
   'adminCreateEquipment',
   'adminCreateUser',
+  'adminDeleteEquipment',
   'adminGetDashboard',
   'adminGetOperationDetail',
   'adminListBorrowing',
@@ -31,8 +32,10 @@ const PUBLIC_RPC_NAMES = Object.freeze([
   'adminListHistory',
   'adminListOperations',
   'adminListUsers',
+  'adminPreviewImageIntegrity',
   'adminReconcileOperation',
   'adminRejectBorrow',
+  'adminRepairImageIntegrity',
   'adminRunIntegrityAudit',
   'adminUpdateCategory',
   'adminUpdateEquipment',
@@ -84,6 +87,7 @@ const SOURCE_FILES = [
   'CategoryService.gs',
   'EquipmentService.gs',
   'ImageService.gs',
+  'ImageIntegrityService.gs',
   'BorrowService.gs',
   'DashboardService.gs',
   'UserService.gs',
@@ -502,6 +506,7 @@ function loadSources(context) {
 function createAppsScriptHarness(options = {}) {
   const state = {
     activeEmail: options.activeEmail === undefined ? 'admin@example.com' : String(options.activeEmail),
+    effectiveEmail: options.effectiveEmail === undefined ? 'admin@example.com' : String(options.effectiveEmail),
     visitorKey: options.visitorKey || 'test-visitor:initial',
     webAppUrl: options.webAppUrl || 'https://script.google.com/macros/s/test-deployment/exec',
     scriptId: options.scriptId || TEST_SCRIPT_ID,
@@ -621,6 +626,9 @@ function createAppsScriptHarness(options = {}) {
       getActiveUser() {
         state.activeUserCalls += 1;
         return { getEmail: () => state.activeEmail };
+      },
+      getEffectiveUser() {
+        return { getEmail: () => state.effectiveEmail };
       },
       getTemporaryActiveUserKey() {
         state.temporaryUserKeyCalls += 1;

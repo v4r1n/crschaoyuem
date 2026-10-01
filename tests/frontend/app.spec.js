@@ -56,7 +56,7 @@ test('equipment editor scrolls its fields with the mouse while header and action
 
 test('equipment image drop zone browses and accepts dropped GIF files with a preview', async ({ page }) => {
   await openAuthenticated(page, '/?view=equipment-detail&id=AST-000001&role=admin', 'equipment-detail');
-  await expect(page.locator('[data-app-version]')).toHaveText('0.1.8');
+  await expect(page.locator('[data-app-version]')).toHaveText('0.1.10');
   await page.locator('[data-action="upload-image"]').click();
   const form = page.locator('#equipment-image-form');
   const zone = form.locator('[data-image-dropzone]');

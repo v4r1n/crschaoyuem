@@ -1,8 +1,11 @@
 # CRS Yuem-Kuen System Project Memory
 
-Last updated: 2026-09-04
+Last updated: 2026-10-01
 
 ## Current state
+
+- The supplied workbook has one STARTED image upload for AST-000003, with a pinned Drive file but no Equipment image reference. This blocks both new uploads and edits. Admin forms now offer guarded cancellation and retain unsaved input for retry.
+- Pilot 0.1.10 adds an audited ADMIN-only terminal DELETED status with exact asset-ID confirmation. Active loans and pending operations block deletion; the record, included items, image and History remain.
 
 - Active branch: `codex/initial-v1`
 - Current version: `0.2.0` release candidate; the prior domain-only `yru.ac.th` deployment was reported working, while the external-account release now uses server-side OAuth/OIDC and still needs Web OAuth client/redirect configuration, redeployment, and live sign-off

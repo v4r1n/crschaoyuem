@@ -139,6 +139,12 @@ function adminUpdateEquipment(sessionToken, input) {
   });
 }
 
+function adminDeleteEquipment(sessionToken, input) {
+  return executeAdminRpc_(sessionToken, function (actor) {
+    return deleteEquipment_(input || {}, actor);
+  });
+}
+
 function adminChangeEquipmentStatus(sessionToken, input) {
   return executeAdminRpc_(sessionToken, function (actor) {
     return changeEquipmentStatus_(input || {}, actor);
@@ -208,6 +214,18 @@ function adminListHistory(sessionToken, query) {
 function adminRunIntegrityAudit(sessionToken) {
   return executeAdminRpc_(sessionToken, function (actor) {
     return runIntegrityAudit_(actor);
+  });
+}
+
+function adminPreviewImageIntegrity(sessionToken) {
+  return executeAdminRpc_(sessionToken, function (actor) {
+    return previewImageIntegrity_(actor);
+  });
+}
+
+function adminRepairImageIntegrity(sessionToken, input) {
+  return executeAdminRpc_(sessionToken, function (actor) {
+    return repairImageIntegrity_(input || {}, actor);
   });
 }
 

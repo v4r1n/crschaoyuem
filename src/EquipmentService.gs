@@ -9,6 +9,8 @@ function listEquipment_(query, user) {
   );
   var categories = categoryMap_();
   var records = listRecords_(SHEETS.EQUIPMENT).filter(function (record) {
+    if (record.status === EQUIPMENT_STATUS.DELETED &&
+      !(user.role === USER_ROLE.ADMIN && query.status === EQUIPMENT_STATUS.DELETED)) return false;
     return includesSearch_(record,
       ['asset_id', 'sku', 'name', 'brand', 'model', 'serial_number'], query.search) &&
       exactFilter_(record.category_id, query.categoryId) &&
@@ -33,11 +35,30 @@ function getEquipmentDetail_(assetId, user) {
   var equipment = findRecordById_(SHEETS.EQUIPMENT, 'asset_id', normalizedId);
   assertApp_(equipment, 'NOT_FOUND', 'ไม่พบอุปกรณ์ที่ต้องการ', null, false);
   var isAdmin = user.role === USER_ROLE.ADMIN;
+  assertApp_(equipment.status !== EQUIPMENT_STATUS.DELETED || isAdmin,
+    'NOT_FOUND', 'อุปกรณ์นี้ถูกลบออกจากรายการแล้ว', null, false);
   var dto = equipmentDto_(equipment, categoryMap_(), isAdmin);
+  if (isAdmin) dto.pending_operation = pendingEquipmentOperation_(equipment);
   dto.included_items = listActiveIncludedItems_(normalizedId).map(function (item) {
     return includedItemDto_(item, isAdmin);
   });
   return dto;
+}
+
+function pendingEquipmentOperation_(equipment) {
+  var operation = listRecords_(SHEETS.OPERATIONS).find(function (record) {
+    return record.asset_id === equipment.asset_id && record.status === OPERATION_STATUS.STARTED;
+  });
+  if (!operation) return null;
+  var canAbort = false;
+  if (operation.action === 'UPLOAD_ASSET_IMAGE') {
+    try {
+      canAbort = operationRecordMatchesSnapshot_(SHEETS.EQUIPMENT, equipment,
+        operationBeforeState_(operation)) && !findHistoryByOperationLocked_(operation.operation_id);
+    } catch (error) { canAbort = false; }
+  }
+  return { operation_id: operation.operation_id, action: operation.action,
+    started_at: operation.started_at, can_abort: canAbort };
 }
 
 function createEquipment_(input, actor) {
@@ -61,7 +82,7 @@ function createEquipment_(input, actor) {
       }
     }
     if (operation && operation.status === OPERATION_STATUS.COMPLETED) {
-      return operationResult_(operation);
+      return equipmentOperationResultWithLiveImage_(operation);
     }
     var assetId = operation && operation.entity_id;
     if (!operation) {
@@ -144,10 +165,11 @@ function updateEquipment_(input, actor) {
       }
     }
     if (operation && operation.status === OPERATION_STATUS.COMPLETED) {
-      return operationResult_(operation);
+      return equipmentOperationResultWithLiveImage_(operation);
     }
     var expectedVersion = Number(input.expected_version);
     if (!operation) {
+      assertEquipmentNotDeleted_(current);
       assertExpectedVersion_(current, expectedVersion);
       assertActiveCategoryLocked_(normalized.category_id);
       assertUniqueSerialLocked_(normalized.serial_number, assetId);
@@ -194,6 +216,25 @@ function updateEquipment_(input, actor) {
 }
 
 function changeEquipmentStatus_(input, actor) {
+  return transitionEquipmentStatus_(input, actor, 'CHANGE_STATUS');
+}
+
+function deleteEquipment_(input, actor) {
+  input = input || {};
+  var assetId = requireAssetId_(input.asset_id);
+  assertApp_(input.confirm === true && input.confirm_asset_id === assetId,
+    'VALIDATION_FAILED', 'กรุณาพิมพ์รหัสอุปกรณ์และยืนยันการลบ', null, false);
+  return transitionEquipmentStatus_(mergeObjects_(input, {
+    status: EQUIPMENT_STATUS.DELETED, note: 'ลบอุปกรณ์ออกจากรายการ'
+  }), actor, 'DELETE_ASSET');
+}
+
+function assertEquipmentNotDeleted_(equipment) {
+  assertApp_(equipment.status !== EQUIPMENT_STATUS.DELETED, 'STATE_CONFLICT',
+    'อุปกรณ์นี้ถูกลบแล้ว ไม่สามารถแก้ไขหรือใช้งานต่อได้', null, false);
+}
+
+function transitionEquipmentStatus_(input, actor, action) {
   input = input || {};
   var assetId = requireAssetId_(input.asset_id);
   var commandId = requireCommandId_(input.command_id);
@@ -204,12 +245,13 @@ function changeEquipmentStatus_(input, actor) {
     EQUIPMENT_STATUS.LOST,
     EQUIPMENT_STATUS.RETIRED
   ];
+  if (action === 'DELETE_ASSET') allowed = [EQUIPMENT_STATUS.DELETED];
   var newStatus = requireEnum_(input.status, allowed, 'status', 'สถานะ');
   var note = optionalText_(input.note, 'note', 'หมายเหตุ', 2000, true);
   return withAdminMutation_(actor, function (lockedActor) {
     var current = findRecordById_(SHEETS.EQUIPMENT, 'asset_id', assetId);
     assertApp_(current, 'NOT_FOUND', 'ไม่พบอุปกรณ์ที่ต้องการ', null, false);
-    var spec = operationSpec_(commandId, 'CHANGE_STATUS', 'EQUIPMENT', assetId, {
+    var spec = operationSpec_(commandId, action, 'EQUIPMENT', assetId, {
       assetId: assetId,
       expectedVersion: Number(input.expected_version),
       status: newStatus,
@@ -219,26 +261,27 @@ function changeEquipmentStatus_(input, actor) {
     if (!operation) {
       var legacy = findHistoryByOperationLocked_(commandId);
       if (legacy) {
-        assertOperationMatch_(legacy, 'CHANGE_STATUS', 'EQUIPMENT', assetId);
+        assertOperationMatch_(legacy, action, 'EQUIPMENT', assetId);
         return equipmentResultLocked_(assetId);
       }
     }
     if (operation && operation.status === OPERATION_STATUS.COMPLETED) {
-      return operationResult_(operation);
+      return equipmentOperationResultWithLiveImage_(operation);
     }
     assertApp_(!current.active_borrow_id && !findActiveBorrowForAssetLocked_(assetId),
-      'STATE_CONFLICT', 'อุปกรณ์มีรายการยืมที่กำลังดำเนินการ จึงเปลี่ยนสถานะโดยตรงไม่ได้', null, false);
+      'STATE_CONFLICT', 'อุปกรณ์มีรายการยืมที่กำลังดำเนินการ จึงลบหรือเปลี่ยนสถานะโดยตรงไม่ได้', null, false);
     assertApp_(WORKFLOW_EQUIPMENT_STATUSES.indexOf(current.status) === -1,
       'STATE_CONFLICT', 'สถานะนี้ควบคุมโดยขั้นตอนยืม–คืน', null, false);
     var expectedVersion = Number(input.expected_version);
     if (!operation) {
+      assertEquipmentNotDeleted_(current);
       assertExpectedVersion_(current, expectedVersion);
       assertApp_(current.status !== newStatus, 'STATE_CONFLICT',
         'อุปกรณ์อยู่ในสถานะนี้แล้ว', null, false);
       operation = startOperationLocked_(spec, current);
     }
     var before = operationBeforeState_(operation);
-    var targetNote = note || before.note;
+    var targetNote = action === 'DELETE_ASSET' ? before.note : (note || before.note);
     var targetChanges = {
       status: newStatus,
       note: targetNote,
@@ -261,7 +304,7 @@ function changeEquipmentStatus_(input, actor) {
       entityType: 'EQUIPMENT',
       entityId: assetId,
       assetId: assetId,
-      action: 'CHANGE_STATUS',
+      action: action,
       oldStatus: before.status,
       newStatus: newStatus,
       note: note,
@@ -477,6 +520,9 @@ function equipmentDto_(record, categories, includeAdminFields) {
     'image_url', 'qr_url', 'note', 'row_version'
   ];
   var dto = includeAdminFields ? toClientValue_(record) : selectClientFields_(record, userFields);
+  var imageState = equipmentImageState_(record.image_file_id);
+  dto.imageAvailable = imageState.imageAvailable;
+  dto.image_url = imageState.image_url;
   dto.category_name = categories && categories[record.category_id]
     ? categories[record.category_id].category_name
     : '';
@@ -485,6 +531,11 @@ function equipmentDto_(record, categories, includeAdminFields) {
   dto.qr_url = buildAssetUrl_(record.asset_id);
   dto.can_borrow = record.status === EQUIPMENT_STATUS.AVAILABLE && !record.active_borrow_id;
   return dto;
+}
+
+function equipmentOperationResultWithLiveImage_(operation) {
+  var result = operationResult_(operation);
+  return result ? mergeObjects_(result, equipmentImageState_(result.image_file_id)) : result;
 }
 
 function equipmentResultLocked_(assetId) {
@@ -511,6 +562,7 @@ function equipmentFacets_() {
   var locations = Object.create(null);
   var departments = Object.create(null);
   listRecords_(SHEETS.EQUIPMENT).forEach(function (record) {
+    if (record.status === EQUIPMENT_STATUS.DELETED) return;
     if (record.location) locations[stripSheetEscape_(record.location)] = true;
     if (record.department) departments[stripSheetEscape_(record.department)] = true;
   });

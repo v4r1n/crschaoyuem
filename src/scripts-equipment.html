@@ -158,14 +158,35 @@
       facets.departments || [], '', '', currentQuery.department);
   }
 
+  function imagePlaceholderMarkup() {
+    return '<div data-equipment-image-fallback role="img" aria-label="ไม่มีภาพอุปกรณ์" class="d-flex h-100 ' +
+      'align-items-center justify-content-center bg-body-tertiary text-body-secondary">' +
+      '<i class="bi bi-box-seam fs-1" aria-hidden="true"></i></div>';
+  }
+
   function imageMarkup(record, className) {
-    var imageUrl = safeImage(record.image_url);
-    if (!imageUrl) {
-      return '<div class="d-flex h-100 align-items-center justify-content-center bg-body-tertiary text-body-secondary">' +
-        '<i class="bi bi-box-seam fs-1" aria-hidden="true"></i></div>';
-    }
-    return '<img class="' + escape(className || 'w-100 h-100 object-fit-contain') + '" src="' +
-      escape(imageUrl) + '" alt="ภาพ' + escape(record.name) + '" loading="lazy" referrerpolicy="no-referrer">';
+    var imageUrl = record.imageAvailable === false ? '' : safeImage(record.image_url);
+    if (!imageUrl) return imagePlaceholderMarkup();
+    return '<img data-equipment-image data-src="' + escape(imageUrl) + '" class="' +
+      escape(className || 'w-100 h-100 object-fit-contain') + ' opacity-0" alt="ภาพ' +
+      escape(record.name) + '" loading="lazy" referrerpolicy="no-referrer">' +
+      imagePlaceholderMarkup();
+  }
+
+  function loadListImages(host) {
+    CRS.$$('img[data-equipment-image]', host).forEach(function (image) {
+      var fallback = image.nextElementSibling;
+      image.onload = function () {
+        image.classList.remove('opacity-0');
+        setVisible(fallback, false);
+      };
+      image.onerror = function () {
+        image.removeAttribute('src');
+        setVisible(image, false);
+        setVisible(fallback, true);
+      };
+      image.src = image.dataset.src;
+    });
   }
 
   function equipmentCard(record) {
@@ -174,11 +195,11 @@
       ? '<button type="button" class="btn btn-primary" data-action="borrow-equipment" data-asset-id="' +
         escape(assetId) + '"><i class="bi bi-calendar-plus me-1" aria-hidden="true"></i>ขอยืม</button>'
       : '';
-    var adminButtons = isAdmin()
+    var adminButtons = isAdmin() && record.status !== 'DELETED'
       ? '<button type="button" class="btn btn-outline-secondary" data-action="edit-equipment" data-asset-id="' +
           escape(assetId) + '"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">แก้ไข</span></button>' +
         '<button type="button" class="btn btn-outline-secondary" data-action="change-status" data-asset-id="' +
-          escape(assetId) + '"><i class="bi bi-arrow-repeat" aria-hidden="true"></i><span class="visually-hidden">เปลี่ยนสถานะ</span></button>'
+          escape(assetId) + '"><i class="bi bi-arrow-repeat" aria-hidden="true"></i><span class="visually-hidden">เปลี่ยนสถานะ</span></button>' + deleteButton(record)
       : '';
     return '<div class="col-12 col-sm-6 col-xl-4"><article class="card h-100 overflow-hidden">' +
       '<div class="ratio ratio-4x3">' + imageMarkup(record) + '</div>' +
@@ -205,10 +226,10 @@
       actions += ' <button type="button" class="btn btn-sm btn-primary" data-action="borrow-equipment" ' +
         'data-asset-id="' + escape(assetId) + '">ขอยืม</button>';
     }
-    if (isAdmin()) {
+    if (isAdmin() && record.status !== 'DELETED') {
       actions += ' <button type="button" class="btn btn-sm btn-outline-secondary" data-action="edit-equipment" ' +
         'data-asset-id="' + escape(assetId) + '"><i class="bi bi-pencil" aria-hidden="true"></i>' +
-        '<span class="visually-hidden">แก้ไข ' + escape(record.name) + '</span></button>';
+        '<span class="visually-hidden">แก้ไข ' + escape(record.name) + '</span></button> ' + deleteButton(record);
     }
     return '<tr><td><div class="d-flex align-items-center gap-2">' +
       '<div class="rounded overflow-hidden flex-shrink-0 bg-body-tertiary" style="width:3rem;height:3rem">' +
@@ -250,6 +271,8 @@
     var tableHost = CRS.$('#table-body-equipment', listPage);
     cardHost.innerHTML = items.map(equipmentCard).join('');
     tableHost.innerHTML = items.map(equipmentRow).join('');
+    loadListImages(cardHost);
+    loadListImages(tableHost);
     CRS.setText('#equipment-results-summary', 'พบ ' + Number(listResult.total || 0).toLocaleString('th-TH') +
       ' รายการ');
     var paginationHost = CRS.$('#pagination-equipment', listPage);
@@ -313,17 +336,16 @@
 
     var image = CRS.$('#equipment-detail-image', detailPage);
     var fallback = CRS.$('#equipment-detail-image-fallback', detailPage);
-    var imageUrl = safeImage(record.image_url);
+    var imageUrl = record.imageAvailable === false ? '' : safeImage(record.image_url);
     image.onload = function () { setVisible(image, true); setVisible(fallback, false); };
     image.onerror = function () { image.removeAttribute('src'); setVisible(image, false); setVisible(fallback, true); };
+    image.removeAttribute('src');
+    setVisible(image, false);
+    setVisible(fallback, true);
     if (imageUrl) {
       image.alt = 'ภาพ' + displayValue(record.name);
       image.referrerPolicy = 'no-referrer';
       image.src = imageUrl;
-    } else {
-      image.removeAttribute('src');
-      setVisible(image, false);
-      setVisible(fallback, true);
     }
 
     var borrowButton = CRS.$('#equipment-detail-borrow-button', detailPage);
@@ -347,6 +369,9 @@
     var adminMetadata = CRS.$('#equipment-admin-metadata', detailPage);
     setVisible(adminActions, admin);
     setVisible(adminMetadata, admin);
+    if (adminActions) CRS.$$('[data-action]', adminActions).forEach(function (button) {
+      setVisible(button, admin && record.status !== 'DELETED');
+    });
     if (admin) {
       CRS.setText(CRS.$('#equipment-detail-purchase-date', detailPage), CRS.formatDate(record.purchase_date));
       CRS.setText(CRS.$('#equipment-detail-purchase-price', detailPage), CRS.formatMoney(record.purchase_price));
@@ -469,6 +494,18 @@
             '<div id="equipment-image-limit" class="form-text" data-image-limit>รองรับ JPEG, PNG, WebP และ GIF</div></div>' +
           '<div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">ยกเลิก</button>' +
             '<button type="submit" class="btn btn-primary" data-submit><i class="bi bi-cloud-arrow-up me-1" aria-hidden="true"></i>อัปโหลด</button></div>' +
+        '</form></div></div></div>' +
+      '<div class="modal fade" id="equipment-delete-modal" tabindex="-1" aria-labelledby="equipment-delete-title" aria-hidden="true">' +
+        '<div class="modal-dialog"><div class="modal-content"><form id="equipment-delete-form" novalidate>' +
+          '<div class="modal-header"><h2 class="modal-title h5" id="equipment-delete-title">ลบอุปกรณ์</h2>' +
+            '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button></div>' +
+          '<div class="modal-body"><input type="hidden" name="asset_id"><input type="hidden" name="expected_version">' +
+            '<p>อุปกรณ์: <strong data-equipment-name></strong></p>' +
+            '<p id="equipment-delete-help">อุปกรณ์จะถูกนำออกจากรายการและไม่สามารถยืมได้ ประวัติการยืมและข้อมูลเดิมยังคงเก็บไว้ รูปภาพจะไม่ถูกลบจาก Drive</p>' +
+            '<label for="equipment-delete-confirm" class="form-label">พิมพ์รหัสอุปกรณ์ <strong data-confirm-asset></strong> เพื่อยืนยัน</label>' +
+            '<input id="equipment-delete-confirm" name="confirm_asset_id" class="form-control" autocomplete="off" required aria-describedby="equipment-delete-help"></div>' +
+          '<div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">ยกเลิก</button>' +
+            '<button type="submit" class="btn btn-danger" data-submit disabled>ลบอุปกรณ์</button></div>' +
         '</form></div></div></div>';
     document.body.appendChild(template.content);
     bindAdminModalEvents();
@@ -566,6 +603,7 @@
     document.getElementById('equipment-editor-items').replaceChildren();
     (values.included_items || []).forEach(appendIncludedItem);
     renumberIncludedItemRows();
+    showPendingOperation(form, record);
     CRS.openModal('#equipment-editor-modal');
     setTimeout(function () { form.elements.namedItem('sku').focus(); }, 200);
   }
@@ -641,18 +679,16 @@
         await loadEquipmentList();
       }
     } catch (error) {
+      await refreshPendingOperation(form, error);
       CRS.handleError(error, { form: form });
     } finally {
-      submit.disabled = false;
+      submit.disabled = Boolean(form.querySelector('[data-pending-operation]'));
     }
   }
 
   async function latestEquipment(assetId) {
     var normalizedId = safeAssetId(assetId);
     if (!normalizedId) throw new Error('Asset ID ไม่ถูกต้อง');
-    if (currentDetail && currentDetail.asset_id === normalizedId && detailPage && detailPage.isConnected) {
-      return currentDetail;
-    }
     return CRS.withLoading(function () { return CRS.api.getEquipmentDetail(normalizedId); },
       'กำลังโหลดข้อมูลอุปกรณ์…');
   }
@@ -772,6 +808,7 @@
       Math.ceil(imageSizeLimit() / (1024 * 1024)) + ' MB');
     setVisible(CRS.$('[data-image-preview]', form), false);
     setVisible(CRS.$('[data-image-placeholder]', form), true);
+    showPendingOperation(form, record);
     CRS.openModal('#equipment-image-modal');
   }
 
@@ -887,10 +924,126 @@
       if (detailPage && detailPage.isConnected) populateEquipmentDetail(result);
       if (listPage && listPage.isConnected) await loadEquipmentList();
     } catch (error) {
+      await refreshPendingOperation(form, error);
       CRS.handleError(error, { form: form });
     } finally {
-      submit.disabled = false;
+      submit.disabled = Boolean(form.querySelector('[data-pending-operation]'));
     }
+  }
+
+  function showPendingOperation(form, record) {
+    var existing = CRS.$('[data-pending-operation]', form);
+    if (existing) existing.remove();
+    var operation = record && record.pending_operation;
+    var submit = CRS.$('[data-submit]', form);
+    submit.disabled = Boolean(operation);
+    if (!operation) return;
+    var panel = document.createElement('div');
+    panel.className = 'alert alert-warning';
+    panel.dataset.pendingOperation = operation.operation_id;
+    panel.setAttribute('role', 'status');
+    var cancellable = operation.action === 'UPLOAD_ASSET_IMAGE' && operation.can_abort;
+    panel.innerHTML = '<p class="mb-2">' + (cancellable
+      ? 'มีงานอัปโหลดรูปเดิมค้างอยู่ กรุณายกเลิกงานเดิมก่อนบันทึกหรืออัปโหลดใหม่'
+      : 'มีงานเดิมที่ยังไม่เสร็จ กรุณาตรวจสอบในหน้าจัดการระบบก่อนทำรายการต่อ') + '</p>' +
+      (cancellable ? '<label class="d-flex gap-2 align-items-start mb-2"><input type="checkbox" class="form-check-input flex-shrink-0" data-confirm-abort>' +
+        '<span>ยืนยันยกเลิกงานเดิม ไฟล์ที่ตรวจสอบว่าเป็นของงานนี้และยังไม่ถูกใช้งานจะย้ายไปถังขยะ</span></label>' +
+        '<button type="button" class="btn btn-sm btn-warning me-2" data-cancel-pending-upload disabled>ยกเลิกงานอัปโหลดค้าง</button>' : '') +
+      '<button type="button" class="btn btn-sm btn-outline-secondary" data-inspect-operation>ตรวจสอบงานค้าง</button>';
+    CRS.$('.modal-body', form).prepend(panel);
+    CRS.$('[data-inspect-operation]', panel).addEventListener('click', function () {
+      var modal = form.closest('.modal');
+      modal.addEventListener('hidden.bs.modal', function () {
+        CRS.navigate('admin', { tab: 'system', search: operation.operation_id });
+      }, { once: true });
+      bootstrap.Modal.getOrCreateInstance(modal).hide();
+    });
+    if (!cancellable) return;
+    var cancel = CRS.$('[data-cancel-pending-upload]', panel);
+    CRS.$('[data-confirm-abort]', panel).addEventListener('change', function (event) {
+      cancel.disabled = !event.currentTarget.checked;
+    });
+    cancel.addEventListener('click', async function () {
+      cancel.disabled = true;
+      try {
+        var result = await CRS.withLoading(function () {
+          return CRS.api.adminAbortOperation({ operation_id: operation.operation_id,
+            reason: 'ผู้ดูแลยกเลิกงานอัปโหลดค้างจากฟอร์มอุปกรณ์เพื่อทำรายการใหม่' });
+        }, 'กำลังยกเลิกงานอัปโหลดเดิม…');
+        if (result.status !== 'ABORTED') throw new Error('ยังยกเลิกงานเดิมไม่สำเร็จ กรุณาตรวจสอบงานค้าง');
+        record.pending_operation = null;
+        if (currentDetail && currentDetail.asset_id === record.asset_id) currentDetail.pending_operation = null;
+        panel.remove();
+        submit.disabled = form.id === 'equipment-delete-form' &&
+          form.elements.namedItem('confirm_asset_id').value.trim() !== record.asset_id;
+        CRS.toast('ยกเลิกงานค้างแล้ว สามารถบันทึกข้อมูลหรืออัปโหลดรูปใหม่ได้', 'success');
+        submit.focus();
+      } catch (error) {
+        CRS.handleError(error, { form: form });
+        cancel.disabled = false;
+      }
+    });
+  }
+
+  async function refreshPendingOperation(form, error) {
+    if (!error || ['OPERATION_PENDING', 'IMAGE_FILE_UNAVAILABLE'].indexOf(error.code) === -1) return;
+    var assetId = form.elements.namedItem('asset_id').value;
+    if (!safeAssetId(assetId)) return;
+    try { showPendingOperation(form, await CRS.api.getEquipmentDetail(assetId)); }
+    catch (lookupError) { /* Keep the original error and the user's unsaved input. */ }
+  }
+
+  function deleteButton(record) {
+    return '<button type="button" class="btn btn-outline-danger" data-action="delete-equipment" data-asset-id="' +
+      escape(record.asset_id) + '"><i class="bi bi-trash" aria-hidden="true"></i><span class="visually-hidden">ลบ ' +
+      escape(record.name) + '</span></button>';
+  }
+
+  async function openDeleteForAsset(assetId) {
+    try {
+      var record = await CRS.api.getEquipmentDetail(safeAssetId(assetId));
+      if (record.status === 'DELETED') throw new Error('อุปกรณ์นี้ถูกลบแล้ว');
+      if (record.active_borrow_id || DIRECT_STATUSES.indexOf(record.status) === -1) {
+        throw new Error('อุปกรณ์มีรายการยืมค้างอยู่ ต้องดำเนินการยืม–คืนให้เสร็จก่อนลบ');
+      }
+      ensureAdminModals();
+      var form = document.getElementById('equipment-delete-form');
+      form.reset();
+      form.classList.remove('was-validated');
+      CRS.clearFieldErrors(form);
+      setFormValue(form, 'asset_id', record.asset_id);
+      setFormValue(form, 'expected_version', record.row_version);
+      CRS.setText(CRS.$('[data-equipment-name]', form), record.name + ' (' + record.asset_id + ')');
+      CRS.setText(CRS.$('[data-confirm-asset]', form), record.asset_id);
+      showPendingOperation(form, record);
+      CRS.$('[data-submit]', form).disabled = true;
+      CRS.openModal('#equipment-delete-modal');
+    } catch (error) { CRS.handleError(error); }
+  }
+
+  async function submitEquipmentDelete(event) {
+    event.preventDefault();
+    var form = event.currentTarget;
+    var assetId = form.elements.namedItem('asset_id').value;
+    var typed = form.elements.namedItem('confirm_asset_id').value.trim();
+    if (typed !== assetId || form.querySelector('[data-pending-operation]')) return;
+    var submit = CRS.$('[data-submit]', form);
+    submit.disabled = true;
+    try {
+      await CRS.withLoading(function () {
+        return CRS.runMutation('equipment:delete:' + assetId + ':' + form.elements.namedItem('expected_version').value,
+          'adminDeleteEquipment', { asset_id: assetId,
+            expected_version: Number(form.elements.namedItem('expected_version').value),
+            confirm: true, confirm_asset_id: typed });
+      }, 'กำลังลบอุปกรณ์…');
+      bootstrap.Modal.getOrCreateInstance(form.closest('.modal')).hide();
+      CRS.toast('ลบอุปกรณ์ออกจากรายการแล้ว ประวัติเดิมยังคงเก็บไว้', 'success');
+      if (detailPage && detailPage.isConnected) CRS.navigate('equipment');
+      else if (listPage && listPage.isConnected) await loadEquipmentList();
+    } catch (error) {
+      await refreshPendingOperation(form, error);
+      CRS.handleError(error, { form: form });
+    } finally { submit.disabled = Boolean(form.querySelector('[data-pending-operation]')); }
   }
 
   function bindAdminModalEvents() {
@@ -900,6 +1053,12 @@
     editorForm.addEventListener('submit', submitEquipmentEditor);
     statusForm.addEventListener('submit', submitStatusChange);
     imageForm.addEventListener('submit', submitEquipmentImage);
+    var deleteForm = document.getElementById('equipment-delete-form');
+    deleteForm.addEventListener('submit', submitEquipmentDelete);
+    deleteForm.elements.namedItem('confirm_asset_id').addEventListener('input', function () {
+      CRS.$('[data-submit]', deleteForm).disabled = Boolean(deleteForm.querySelector('[data-pending-operation]')) ||
+        deleteForm.elements.namedItem('confirm_asset_id').value.trim() !== deleteForm.elements.namedItem('asset_id').value;
+    });
     bindImageDropzone(imageForm);
     editorForm.addEventListener('click', function (event) {
       var add = event.target.closest('[data-action="add-included-item"]');
@@ -986,6 +1145,9 @@
       } else if (name === 'change-status' && isAdmin()) {
         event.preventDefault();
         openStatusForAsset(action.dataset.assetId);
+      } else if (name === 'delete-equipment' && isAdmin()) {
+        event.preventDefault();
+        openDeleteForAsset(action.dataset.assetId);
       }
     });
   }
@@ -997,6 +1159,11 @@
       var action = event.target.closest('[data-action]');
       if (!action) return;
       var name = action.dataset.action;
+      if (name === 'delete-equipment' && isAdmin()) {
+        event.preventDefault();
+        openDeleteForAsset(action.dataset.assetId);
+        return;
+      }
       var assetId = safeAssetId(action.dataset.assetId || (currentDetail && currentDetail.asset_id));
       if (name === 'reload-equipment-detail') {
         event.preventDefault();

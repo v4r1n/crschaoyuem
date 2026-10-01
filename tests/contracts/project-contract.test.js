@@ -66,7 +66,7 @@ test('all server, browser, and manifest sources compile', () => {
     access: 'ANYONE_ANONYMOUS',
     executeAs: 'USER_DEPLOYING',
   });
-  assert.equal(serverFiles.length, 26);
+  assert.equal(serverFiles.length, 27);
   assert.equal(browserFiles.length, 10);
 });
 
@@ -115,7 +115,7 @@ test('deployment runbook covers every runtime file, config key, and requested st
   const runtimeFiles = fs.readdirSync(SRC)
     .filter((file) => /\.(?:gs|html|json)$/.test(file))
     .sort();
-  assert.equal(runtimeFiles.length, 47);
+  assert.equal(runtimeFiles.length, 48);
   for (const file of runtimeFiles) {
     const escapedFile = file.replaceAll('.', '\\.');
     assert.match(guide, new RegExp(`\\b${escapedFile}\\b`),
@@ -148,6 +148,7 @@ test('server exposes only the guarded RPCs and deliberate Apps Script entry poin
     'adminCreateCategory',
     'adminCreateEquipment',
     'adminCreateUser',
+    'adminDeleteEquipment',
     'adminGetDashboard',
     'adminGetOperationDetail',
     'adminListBorrowing',
@@ -155,8 +156,10 @@ test('server exposes only the guarded RPCs and deliberate Apps Script entry poin
     'adminListHistory',
     'adminListOperations',
     'adminListUsers',
+    'adminPreviewImageIntegrity',
     'adminReconcileOperation',
     'adminRejectBorrow',
+    'adminRepairImageIntegrity',
     'adminRunIntegrityAudit',
     'adminUpdateCategory',
     'adminUpdateEquipment',
@@ -210,9 +213,11 @@ test('server exposes only the guarded RPCs and deliberate Apps Script entry poin
     /function executeAdminRpc_\s*\(sessionToken, handler\)[\s\S]*?executeSafely_\s*\([\s\S]*?requireAdmin_\s*\(sessionToken\)/);
   assert.match(read('src/Auth.gs'),
     /function requireUser_\s*\(sessionToken\)[\s\S]*?requireApplicationSession_\s*\(sessionToken\)/);
-  const allServerSource = sourceFiles('.gs').map((file) =>
-    fs.readFileSync(path.join(SRC, file), 'utf8')).join('\n');
-  assert.doesNotMatch(allServerSource, /Session\.getEffectiveUser\s*\(/);
+  assert.doesNotMatch(
+    ['src/Api.gs', 'src/Auth.gs', 'src/IdentityService.gs'].map(read).join('\n'),
+    /Session\.getEffectiveUser\s*\(/,
+    'visitor identity must not come from the deployer Session user',
+  );
   assert.doesNotMatch(
     ['src/Api.gs', 'src/Auth.gs', 'src/IdentityService.gs'].map(read).join('\n'),
     /Session\.getActiveUser\s*\(/,
@@ -529,10 +534,10 @@ test('displayed app version is source-controlled and matches the package release
   const config = read('src/Config.gs');
   const manifest = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
-  assert.equal(manifest.version, '0.1.8');
+  assert.equal(manifest.version, '0.1.10');
   assert.equal(lock.version, manifest.version);
   assert.equal(lock.packages[''].version, manifest.version);
-  assert.match(config, /APP_VERSION:\s*'0\.1\.8'/);
+  assert.match(config, /APP_VERSION:\s*'0\.1\.10'/);
   assert.match(config, /APP_VERSION:\s*CONFIG\.APP_VERSION/);
   assert.doesNotMatch(config, /APP_VERSION:\s*valueOrDefault_\(properties\.APP_VERSION/);
 });

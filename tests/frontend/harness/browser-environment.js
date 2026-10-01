@@ -133,6 +133,24 @@
     }
   ];
 
+  var imageScenario = String(controls.get('image') || '');
+  if (['unavailable', 'broken', 'available'].includes(imageScenario)) {
+    equipment[0].image_url = 'https://drive.google.com/thumbnail?id=' +
+      (imageScenario === 'available' ? 'available-equipment-image' : 'missing-equipment-image');
+    equipment[0].imageAvailable = imageScenario !== 'unavailable';
+  }
+
+  var imageIntegrityIssues = [
+    { kind: 'UNAVAILABLE_REFERENCE', asset_id: 'AST-000001', file_id: 'missing-image-001',
+      can_repair: false, suggested_action: 'REUPLOAD_IMAGE' },
+    { kind: 'ORPHAN_FILE', asset_id: '', file_id: 'orphan-image-001',
+      file_name: 'AST-999999-orphan-cleanup-001.gif', can_repair: true,
+      suggested_action: 'TRASH_ORPHAN' },
+    { kind: 'STARTED_UPLOAD', asset_id: 'AST-000002', file_id: 'pinned-image-001',
+      operation_id: 'image-started-op-001', can_repair: true,
+      suggested_action: 'RECONCILE_OPERATION' }
+  ];
+
   var borrowing = [
     {
       borrow_id: 'BR-000001',
@@ -200,7 +218,7 @@
       app: {
         name: 'CRS Yuem-Kuen System',
         shortName: 'CRS Yuem-Kuen',
-        version: '0.1.8',
+        version: '0.1.10',
         timezone: 'Asia/Bangkok',
         locale: 'th-TH',
         webAppUrl: controls.get('qr') === 'unset'
@@ -374,6 +392,36 @@
     if (method === 'adminListCategories') return pageResult(categories, 20);
     if (method === 'adminListHistory') return endpoints('listMyHistory', args);
     if (method === 'adminListOperations') return pageResult([], 20);
+    if (method === 'adminPreviewImageIntegrity') {
+      var issues = controls.get('imageIntegrity') === 'issues' ? clone(imageIntegrityIssues) : [];
+      var counts = {
+        unavailable_references: issues.filter(function (issue) {
+          return issue.kind === 'UNAVAILABLE_REFERENCE';
+        }).length,
+        trashed_references: 0,
+        stale_urls: 0,
+        orphan_files: issues.filter(function (issue) { return issue.kind === 'ORPHAN_FILE'; }).length,
+        started_uploads: issues.filter(function (issue) { return issue.kind === 'STARTED_UPLOAD'; }).length
+      };
+      return { generated_at: '2026-08-28T10:30:00.000Z',
+        summary: { total_issues: issues.length, returned_issues: issues.length,
+          truncated: false, counts: counts }, issues: issues };
+    }
+    if (method === 'adminRepairImageIntegrity') {
+      if (!input || input.confirm !== true) {
+        return apiError('VALIDATION_FAILED', 'Confirmation required', null, false);
+      }
+      var matching = imageIntegrityIssues.find(function (issue) {
+        return issue.kind === input.kind &&
+          (issue.kind === 'ORPHAN_FILE'
+            ? issue.file_id === input.file_id
+            : issue.operation_id === input.operation_id);
+      });
+      if (!matching) return apiError('STATE_CONFLICT', 'Issue already resolved', null, false);
+      imageIntegrityIssues = imageIntegrityIssues.filter(function (issue) { return issue !== matching; });
+      return { status: input.kind === 'ORPHAN_FILE' ? 'TRASHED' : 'COMPLETED',
+        file_id: matching.file_id, operation_id: matching.operation_id || '' };
+    }
     if (method === 'adminRunIntegrityAudit') {
       return {
         generated_at: '2026-08-28T10:30:00.000Z',
@@ -626,7 +674,7 @@
     return { hash: global.location.hash.replace(/^#/, ''), parameter: parameter, parameters: parameters };
   }
 
-  var harnessControlKeys = ['role', 'access', 'fail', 'expire', 'transport', 'delay', 'qr', 'oauth'];
+  var harnessControlKeys = ['role', 'access', 'fail', 'expire', 'transport', 'delay', 'qr', 'oauth', 'image', 'imageIntegrity'];
   function writeHistory(kind, historyState, parameters, title) {
     var rawParameters = clone(parameters || {});
     state.history.push({ kind: kind, state: clone(historyState || {}), parameters: rawParameters, title: title || '' });

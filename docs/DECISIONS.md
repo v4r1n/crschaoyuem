@@ -197,3 +197,21 @@ Status: Accepted for local fix — 2026-09-30; deployment and live verification 
 `WEB_APP_URL` is the sole source for generated Equipment Detail, QR, share, and navigation links. It must designate the deployed `https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec` endpoint. Google's numbered account route (`/macros/u/{number}/s/.../exec`) may appear while browsing or in a reported service URL; the app strips only that exact route before comparing deployment IDs or generating a link. `ScriptApp.getService().getUrl()` may verify the configured deployment but never supplies a fallback link base. Missing, mismatched, development, or malformed configuration fails closed for generated links.
 
 The Equipment `qr_url` column remains a cache: DTOs never fall back to its possibly stale value, and a normal equipment edit refreshes it from the canonical base. Existing QR stickers remain valid because the deployment ID is unchanged. SPA route changes still use `google.script.history` for state/parameters; Google may keep an account-routed URL in the browser address bar, but the app never copies that browser path into a QR, share, or authored navigation anchor. This supersedes ADR-009's allowance of a detected `/exec` fallback. No OAuth, user authorization, or Drive/Sheet visibility changes are made.
+
+## ADR-025 — Retire replaced equipment images only after commit
+
+Status: Accepted for local image lifecycle fix — 2026-09-30; deployment and live verification pending.
+
+This decision supersedes ADR-016's rule that all replaced image files remain until a separate storage reconciliation. Upload and verify the replacement Drive file first. Commit its `image_file_id` to Equipment, write the corresponding History evidence, and finalize the upload operation as `COMPLETED` before attempting to trash the old file. A cleanup failure cannot undo a committed replacement; the remaining old file becomes an orphan candidate for the Admin image integrity audit.
+
+Automatic cleanup is limited to an old image that the app can verify is managed by this deployer in its **origin folder**, and that no Equipment row or `STARTED` operation still references. The origin folder comes from the old completed upload operation when available; only legacy images without that evidence use the replacement operation's folder as fallback. Admin Preview scans the current folder plus historical folder IDs in image-operation payloads, and reports inaccessible historical folders instead of silently omitting them. History retains the previous file ID and URL as an audit record, but that URL is not a promise of permanent image availability and may stop resolving after the old file is trashed.
+
+An unresolved Drive lookup (`UNKNOWN`) does not prove deletion and must not auto-abort a `STARTED` image upload or cause another file to be created for that operation. Admin inspects the operation and Drive evidence, then may explicitly abort with unverified cleanup acknowledged. Verified matching files may be trashed, but suspect files that cannot be verified remain; the abort result records `orphan_cleanup_required=true` for later review. No Sheet row is manually edited as part of this procedure.
+
+## ADR-026 — Audited equipment deletion and explicit upload cancellation
+
+Status: Accepted for Pilot 0.1.10 — 2026-10-01.
+
+An equipment record is never physically deleted. An administrator confirms its exact asset ID and changes its status to terminal DELETED through an idempotent operation. Active loans, workflow-controlled statuses, and unfinished operations block deletion. The row, included items, image reference, and append-only History remain. Ordinary catalog, borrowing, and dashboard flows exclude DELETED; administrators may inspect archived records.
+
+A STARTED image upload can block a new upload or edit. Equipment forms show the pending operation and offer cancellation only when the original Equipment snapshot is unchanged and no History row records completion. The administrator abort flow rechecks these conditions under lock and verifies any pinned Drive file before moving it to Trash. The form retains the replacement image or unsaved edits for retry.

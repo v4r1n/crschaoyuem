@@ -65,16 +65,17 @@ Standalone project เป็นรูปแบบหลักของระบ�
 วิธีที่ไม่ต้องติดตั้งเครื่องมือเพิ่มคือสร้างไฟล์ใน Apps Script editor แล้วคัดลอกเนื้อหาจาก `src/` ให้ตรงชื่อทุกไฟล์
 
 1. แทนที่เนื้อหา `Code.gs` ที่ project สร้างมาให้ โดยลบ `myFunction` เดิมแล้ววาง `src/Code.gs`
-2. สำหรับไฟล์ `.gs` อีก 24 ไฟล์ ให้กด **Add a file > Script** แล้วใส่ชื่อฐานโดยไม่ต้องพิมพ์ `.gs`
+2. สำหรับไฟล์ `.gs` อีก 26 ไฟล์ ให้กด **Add a file > Script** แล้วใส่ชื่อฐานโดยไม่ต้องพิมพ์ `.gs`
 3. สำหรับไฟล์ `.html` ให้กด **Add a file > HTML** แล้วใส่ชื่อฐานโดยไม่ต้องพิมพ์ `.html`
 4. แทนที่ manifest ด้วยเนื้อหาจาก `src/appsscript.json`
 5. บันทึกทุกไฟล์ แล้วตรวจว่าไม่มีไฟล์ชื่อซ้ำ เช่น `Code.gs.gs` หรือไฟล์ runtime เก่าที่ไม่มีใน inventory
 
-ไฟล์ Script จำนวน 26 ไฟล์ (รวม `AuthorizeTest.gs` ซึ่งเก็บ helper `authorizePilot_()` แบบ private สำหรับ operator เท่านั้น):
+ไฟล์ Script จำนวน 27 ไฟล์ (รวม `AuthorizeTest.gs` ซึ่งเก็บ helper `authorizePilot_()` แบบ private สำหรับ operator เท่านั้น):
 
 ```text
 Api.gs
 Auth.gs
+AuthorizeTest.gs
 BorrowService.gs
 CategoryService.gs
 Code.gs
@@ -85,6 +86,7 @@ DataStore.gs
 EquipmentService.gs
 Errors.gs
 HistoryService.gs
+ImageIntegrityService.gs
 ImageService.gs
 IdentityService.gs
 IntegrityService.gs
@@ -125,7 +127,7 @@ vendor-html5-qrcode.html
 vendor-qrcode-generator.html
 ```
 
-รวม manifest แล้วมี runtime source 47 ไฟล์ ไม่ต้องอัปโหลด `docs/`, `tests/`, `node_modules/`, `package.json` หรือไฟล์ license เข้า Apps Script การทำงานของไฟล์ `.gs` ไม่ขึ้นกับลำดับที่แสดงใน editor
+รวม manifest แล้วมี runtime source 48 ไฟล์ ไม่ต้องอัปโหลด `docs/`, `tests/`, `node_modules/`, `package.json` หรือไฟล์ license เข้า Apps Script การทำงานของไฟล์ `.gs` ไม่ขึ้นกับลำดับที่แสดงใน editor
 
 ก่อนส่ง source ขึ้น production ผู้พัฒนาควรรันจาก repository ด้วย Node.js 20 ขึ้นไป:
 
@@ -164,7 +166,13 @@ Script Properties เป็นค่าร่วมของทั้ง web app
 
 ทั้งสอง mode เป็น boundary ที่กว้างกว่า Users sheet: `DOMAIN_WITH_LINK` อนุญาตสมาชิก domain ที่มี URL แม้ไม่มี Users row หรือถูก Inactive แต่กัน Gmail ออก ส่วน `ANYONE_WITH_LINK` รองรับ Gmail แต่ผู้ถือ URL ทุกคนดูได้ รูปจึงต้องเป็นภาพครุภัณฑ์ที่องค์กรอนุมัติตาม audience นั้น ห้ามใช้เก็บเอกสารลับ ข้อมูลบุคคล หรือภาพที่ต้องบังคับสิทธิ์ระดับ Users row หากต้องการ policy แคบกว่านี้ต้องออกแบบ authenticated image delivery ใหม่
 
-การเปลี่ยน `IMAGE_SHARING` มีผลเฉพาะไฟล์ที่อัปโหลด/แทนที่หลังเปลี่ยนค่า ไม่ย้อนสิทธิ์ไฟล์เก่า และการแทนรูปไม่ได้ลบรูปเดิมอัตโนมัติเพราะ History อาจอ้าง file ID/URL เดิม ให้ผู้ดูแลทำ permission/storage audit และ reconcile reference ก่อนเปลี่ยนสิทธิ์หรือย้ายไฟล์ ห้ามลบจาก Drive แบบ bulk โดยไม่ตรวจหลักฐาน
+การเปลี่ยน `IMAGE_SHARING` มีผลเฉพาะไฟล์ที่อัปโหลด/แทนที่หลังเปลี่ยนค่า ไม่ย้อนสิทธิ์ไฟล์เก่า เมื่อแทนรูป ระบบจะตรวจรูปใหม่และผูก `image_file_id` ใน Equipment พร้อม History และ operation `COMPLETED` ก่อน แล้วจึงพยายามย้ายรูปเก่าไป Trash เฉพาะไฟล์ที่ระบบสร้าง เป็นของบัญชี deploy และไม่มี Equipment หรือ `STARTED` operation อ้างถึง โดยตรวจโฟลเดอร์ต้นทางจาก operation รูปเก่าที่ `COMPLETED` (ถ้าไม่มีจึงใช้โฟลเดอร์ของคำสั่งใหม่) ถ้า cleanup ไม่สำเร็จ รูปเก่าที่ยังเข้าถึงได้จะเป็น orphan ให้ผู้ดูแลตรวจผ่าน Admin image integrity Preview/Repair; Preview ตรวจทั้งโฟลเดอร์ปัจจุบันและโฟลเดอร์เก่าที่บันทึกใน payload ของ image operations และแจ้งโฟลเดอร์เก่าที่อ่านไม่ได้ ห้ามลบจาก Drive แบบ bulk โดยไม่ตรวจหลักฐาน History ยังคงเก็บ file ID/URL เดิมเป็นหลักฐาน แต่ URL เดิมอาจเปิดไม่ได้หลังไฟล์เข้า Trash
+
+หาก `UPLOAD_ASSET_IMAGE` ยัง `STARTED` และ Drive lookup คืน `UNKNOWN` ระบบยังสรุปไม่ได้ว่าไฟล์หายหรือขาดสิทธิ์ จึงไม่ยกเลิกอัตโนมัติหรือสร้างไฟล์ใหม่ ให้ Admin ตรวจ operation และ Drive จากหน้า Preview ก่อน หากจำเป็นจึงกด abort โดยยืนยันการ cleanup ที่ตรวจไม่ได้อย่างชัดเจน ระบบคงไฟล์ที่พิสูจน์ไม่ได้ไว้และบันทึก `orphan_cleanup_required=true` เพื่อให้ตามเก็บภายหลัง ห้ามลบ Operations/Equipment ใน Sheet ด้วยมือ
+
+**สถานะการส่งรูปปัจจุบัน:** แอปส่ง `drive.google.com/thumbnail` ให้ browser โหลดตรง สิทธิ์ล็อกอินของ CRS ใช้กับ RPC แต่ไม่ได้ติดไปกับคำขอรูปของ Drive ดังนั้น Gmail ที่เข้าแอปได้อาจยังเปิดรูปไม่ได้เมื่อไฟล์เป็น `DOMAIN_WITH_LINK`; ค่า `imageAvailable` ตรวจว่า backend เข้าถึงไฟล์ได้ ไม่ได้รับรองว่า browser ของผู้ใช้เข้าถึงได้ [การแชร์ไฟล์ของ Google Drive](https://support.google.com/drive/answer/2494822), [สิทธิ์ที่ Web app ใช้ทำงาน](https://developers.google.com/apps-script/manifest/web-app-api-executable)
+
+แนวทาง private delivery ที่เสนอไว้ใน [สถาปัตยกรรม](ARCHITECTURE.md#image-delivery-audit-and-proposed-private-mode-not-implemented) ยังไม่พร้อมใช้งาน: เพิ่ม RPC อ่านภาพที่ตรวจ CRS session/Users row แล้วส่ง image bytes จากสิทธิ์ผู้ deploy ให้ browser เฉพาะภาพที่ Equipment อ้างอิง จึงจะย้ายโฟลเดอร์และไฟล์เดิมไปเป็น Restricted ได้โดยยังรองรับ Gmail ต้องทดสอบ Pilot ด้วยบัญชี YRU และ Gmail, ไฟล์ที่ถูกลบ/ย้าย Trash, logout/session expiry, ขนาดภาพจริง และภาพ GIF ก่อนย้ายสิทธิ์ ห้ามตั้ง `IMAGE_SHARING=PRIVATE` ตอนนี้ เพราะ source ยอมรับเพียงสอง mode ข้างต้น และอย่าเปลี่ยนโฟลเดอร์เป็น public เพื่อแก้อาการ Gmail ดูรูปไม่ขึ้น
 
 ## 6. ตั้ง Admin, allowed domains และ Google OAuth Client
 
@@ -363,7 +371,7 @@ Session ใช้ shared ScriptCache ที่แยก record ด้วย hash
 
 1. หยุดหรือแจ้ง maintenance window สำหรับ mutation สำคัญ
 2. สำรอง Sheet และรัน Integrity audit ก่อนเปลี่ยนรุ่น
-3. อัปโหลด source รุ่นใหม่เข้า Apps Script project เดิมให้ครบ 47 runtime files และเทียบ inventory สองทาง ไฟล์ `.gs/.html` เก่าที่ถูกถอดจาก repository ต้องผ่าน review แล้วนำออกจาก project ด้วย เพราะไฟล์ `.gs` ที่ค้างยังเป็น global callable code ได้
+3. อัปโหลด source รุ่นใหม่เข้า Apps Script project เดิมให้ครบ 48 runtime files และเทียบ inventory สองทาง ไฟล์ `.gs/.html` เก่าที่ถูกถอดจาก repository ต้องผ่าน review แล้วนำออกจาก project ด้วย เพราะไฟล์ `.gs` ที่ค้างยังเป็น global callable code ได้
 4. อ่าน [MIGRATING.md](MIGRATING.md) แล้วรัน private editor function `setupSystem_()` เพื่อใช้ additive migrations
 5. ที่ **Deploy > Manage deployments** เลือก deployment production เดิม แล้วกด **Edit**
 6. ก่อน deploy ทุกครั้ง ตรวจ **Execute as** เป็น **Me** (`USER_DEPLOYING`) และ **Who has access** เป็น **Anyone** (`ANYONE` สำหรับบัญชี Google ที่ลงชื่อเข้าใช้แล้ว); ต้องไม่ใช่ `DOMAIN` หรือ `ANYONE_ANONYMOUS`

@@ -63,15 +63,21 @@ function uploadEquipmentImage_(input, actor) {
         }
       }
       if (operation && operation.status === OPERATION_STATUS.COMPLETED) {
-        return operationResult_(operation);
+        var completedResult = operationResult_(operation);
+        if (current.image_file_id === completedResult.image_file_id) {
+          trashReplacedImageAfterCommit_(operation, operationBeforeState_(operation), current);
+        }
+        return mergeObjects_(completedResult, equipmentImageState_(completedResult.image_file_id));
       }
       var expectedVersion = Number(input.expected_version);
       if (!operation) {
+        assertEquipmentNotDeleted_(current);
         assertExpectedVersion_(current, expectedVersion);
         assertImageFolderSharingPolicy_(getImageFolder_(folderId), sharingMode);
         operation = startOperationLocked_(spec, current);
       }
       var before = operationBeforeState_(operation);
+      assertImageOperationIdentity_(operation, pendingPayload || operationPayload_(operation), before);
       var atSource = equipmentImageSourceMatches_(current, before);
       var atProjection = equipmentImageProjectionMatches_(current, before, operation);
       assertApp_(atSource || atProjection, 'STATE_CONFLICT',
@@ -86,12 +92,24 @@ function uploadEquipmentImage_(input, actor) {
           lockedActor
         );
         var persistedResult = equipmentResultLocked_(assetId);
-        finalizeOperationLocked_(operation, assetId, persistedResult);
+        var persistedCompletion = finalizeOperationLocked_(operation, assetId, persistedResult);
+        trashReplacedImageAfterCommit_(persistedCompletion, before, current);
         return persistedResult;
       }
       var filename = assetId + '-' + operation.operation_id + '.' + IMAGE_MIME_TYPES[mimeType];
-      var file = operation.resource_id ? getImageFileIfPresent_(operation.resource_id) : null;
-      if (file && !imageFileMatches_(file, digest, mimeType, bytes.length)) file = null;
+      var inspection = operation.resource_id
+        ? inspectImageFileReference_(operation.resource_id)
+        : { state: 'NONE', file: null };
+      var file = inspection.file;
+      if (operation.resource_id && !file) {
+        if (inspection.state === 'TRASHED') {
+          throw new AppError_('UPLOAD_RETRY_REQUIRED',
+            'ไฟล์ของคำสั่งเดิมอยู่ในถังขยะ กรุณาเริ่มอัปโหลดใหม่', null, true);
+        }
+        throw new AppError_('IMAGE_FILE_UNAVAILABLE',
+          'ยังยืนยันไม่ได้ว่าไฟล์เดิมหายหรือเข้าถึงไม่ได้ กรุณาให้ผู้ดูแลระบบตรวจสอบ Operation ก่อนอัปโหลดใหม่',
+          null, true);
+      }
       if (!file) {
         var folder = getImageFolder_(folderId);
         file = findRecoverableImageByName_(
@@ -100,6 +118,9 @@ function uploadEquipmentImage_(input, actor) {
           newFile = folder.createFile(Utilities.newBlob(bytes, mimeType, filename));
           file = newFile;
         }
+      }
+      if (file !== newFile) {
+        assertRecoverableImageEvidence_(file, operation, pendingPayload || operationPayload_(operation));
       }
       assertApp_(imageFileMatches_(file, digest, mimeType, bytes.length),
         'STATE_CONFLICT', 'ไฟล์ภาพใน Drive ไม่ตรงกับ operation ที่กำลังกู้คืน', null, false);
@@ -123,15 +144,19 @@ function uploadEquipmentImage_(input, actor) {
         lockedActor
       );
       var result = equipmentResultLocked_(assetId);
-      finalizeOperationLocked_(operation, assetId, result);
+      var completedOperation = finalizeOperationLocked_(operation, assetId, result);
+      trashReplacedImageAfterCommit_(completedOperation, before, current);
       return result;
     });
   } catch (error) {
-    if (error && error.code === 'DRIVE_SHARING_FAILED') {
+    if (error && (error.code === 'DRIVE_SHARING_FAILED' ||
+      error.code === 'UPLOAD_RETRY_REQUIRED')) {
       try {
         var aborted = abortOperationForAdmin_({
           operation_id: commandId,
-          reason: 'Image sharing failed before the equipment record was updated'
+          reason: error.code === 'UPLOAD_RETRY_REQUIRED'
+            ? 'Pinned image is missing or inaccessible before equipment update'
+            : 'Image sharing failed before the equipment record was updated'
         }, actor);
         if (aborted.status === OPERATION_STATUS.ABORTED) error.retryable = false;
       } catch (abortError) {
@@ -262,12 +287,98 @@ function findRecoverableImageByName_(folder, filename, digest, mimeType, byteLen
   var match = null;
   while (files.hasNext()) {
     var candidate = files.next();
-    if (candidate.isTrashed() || !imageFileMatches_(candidate, digest, mimeType, byteLength)) continue;
+    if (candidate.isTrashed()) continue;
+    assertApp_(imageFileMatches_(candidate, digest, mimeType, byteLength), 'STATE_CONFLICT',
+      'พบไฟล์ชื่อเดียวกับ operation แต่เนื้อหาไม่ตรงกับหลักฐาน กรุณาตรวจสอบก่อนกู้คืน', null, false);
     assertApp_(!match, 'STATE_CONFLICT',
       'พบไฟล์กู้คืนของ operation เดียวกันมากกว่าหนึ่งไฟล์ กรุณาติดต่อผู้ดูแลระบบ', null, false);
     match = candidate;
   }
   return match;
+}
+
+function assertImageOperationIdentity_(operation, payload, before) {
+  assertApp_(operation.action === 'UPLOAD_ASSET_IMAGE' &&
+    operation.entity_type === 'EQUIPMENT' && operation.entity_id === operation.asset_id &&
+    payload.assetId === operation.asset_id && before && before.asset_id === operation.asset_id &&
+    Number.isSafeInteger(Number(payload.expectedVersion)) &&
+    Number(payload.expectedVersion) === Number(before.row_version) &&
+    IMAGE_MIME_TYPES[payload.mimeType] && Number.isSafeInteger(Number(payload.byteLength)) &&
+    Number(payload.byteLength) > 0 && Number(payload.byteLength) <= 10 * 1024 * 1024 &&
+    /^[A-Za-z0-9_-]{43}$/.test(String(payload.digest || '')),
+  'STATE_CONFLICT', 'หลักฐานอุปกรณ์หรือไฟล์ของ operation อัปโหลดภาพไม่ตรงกัน', null, false);
+}
+
+function assertRecoverableImageEvidence_(file, operation, payload) {
+  var filename = operation.asset_id + '-' + operation.operation_id + '.' +
+    IMAGE_MIME_TYPES[payload.mimeType];
+  assertApp_(file && imageFileMatches_(file, payload.digest, payload.mimeType,
+    payload.byteLength), 'STATE_CONFLICT',
+  'ไฟล์ภาพที่กู้คืนมีเนื้อหา ชนิด หรือขนาดไม่ตรงกับ operation', null, false);
+  var ownerEmail = '';
+  var deployerEmail = '';
+  var inFolder = false;
+  var actualName = '';
+  try {
+    actualName = file.getName();
+    var parents = file.getParents();
+    while (parents.hasNext()) {
+      if (parents.next().getId() === payload.folderId) inFolder = true;
+    }
+    var owner = file.getOwner();
+    ownerEmail = owner ? normalizeEmail_(owner.getEmail()) : '';
+    deployerEmail = normalizeEmail_(Session.getEffectiveUser().getEmail());
+  } catch (error) {
+    throw new AppError_('STATE_CONFLICT',
+      'ไม่สามารถตรวจชื่อ โฟลเดอร์ หรือเจ้าของไฟล์ภาพก่อนกู้คืนได้', null, false);
+  }
+  assertApp_(actualName === filename && inFolder && deployerEmail &&
+    (!ownerEmail || ownerEmail === deployerEmail), 'STATE_CONFLICT',
+  'ไฟล์ภาพไม่อยู่ในโฟลเดอร์ของคำสั่ง หรือไม่ได้เป็นของบัญชีที่ deploy', null, false);
+}
+
+function trashReplacedImageAfterCommit_(operation, before, current) {
+  var oldFileId = before && normalizeWhitespace_(before.image_file_id);
+  if (!oldFileId || oldFileId === current.image_file_id ||
+    operation.status !== OPERATION_STATUS.COMPLETED ||
+    operation.resource_id !== current.image_file_id) return;
+  // A failed Drive cleanup must not roll back an Equipment row that now points to the new image.
+  try {
+    var operations = listRecords_(SHEETS.OPERATIONS);
+    var stillReferenced = listRecords_(SHEETS.EQUIPMENT).some(function (record) {
+      return record.image_file_id === oldFileId;
+    }) || operations.some(function (record) {
+      return record.status === OPERATION_STATUS.STARTED && record.resource_id === oldFileId;
+    });
+    if (stillReferenced) return;
+    var oldFile = getImageFileIfPresent_(oldFileId);
+    if (!oldFile) return;
+    var payload = operationPayload_(operation);
+    var oldOperation = operations.find(function (record) {
+      return record.action === 'UPLOAD_ASSET_IMAGE' &&
+        record.status === OPERATION_STATUS.COMPLETED &&
+        record.entity_id === current.asset_id && record.resource_id === oldFileId;
+    });
+    var originFolderId = oldOperation
+      ? operationPayload_(oldOperation).folderId
+      : payload.folderId;
+    var managedName = /^AST-\d{6}-[A-Za-z0-9_-]{8,100}\.(jpg|png|webp|gif)$/;
+    if (!managedName.test(oldFile.getName()) ||
+      oldFile.getName().indexOf(current.asset_id + '-') !== 0 ||
+      IMAGE_MIME_TYPES[oldFile.getMimeType()] !== oldFile.getName().split('.').pop()) return;
+    var parents = oldFile.getParents();
+    var inFolder = false;
+    while (parents.hasNext()) {
+      if (parents.next().getId() === originFolderId) inFolder = true;
+    }
+    var owner = oldFile.getOwner();
+    var deployer = normalizeEmail_(Session.getEffectiveUser().getEmail());
+    if (!inFolder || !deployer || (owner && normalizeEmail_(owner.getEmail()) !== deployer)) return;
+    oldFile.setTrashed(true);
+  } catch (error) {
+    console.warn('Unable to trash replaced image after Equipment commit: ' +
+      String(error && error.message ? error.message : error));
+  }
 }
 
 function listUntrashedImagesByName_(folder, filename) {
@@ -330,6 +441,23 @@ function getDriveResourceKey_(file) {
 function buildDriveImageUrl_(fileId, resourceKey) {
   var url = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(fileId) + '&sz=w1600';
   return resourceKey ? url + '&resourcekey=' + encodeURIComponent(resourceKey) : url;
+}
+
+function equipmentImageState_(fileId) {
+  if (!normalizeWhitespace_(fileId)) return { imageAvailable: false, image_url: '' };
+  var file = getImageFileIfPresent_(fileId);
+  if (!file) return { imageAvailable: false, image_url: '' };
+  try {
+    if (!IMAGE_MIME_TYPES[file.getMimeType()] || Number(file.getSize()) <= 0) {
+      return { imageAvailable: false, image_url: '' };
+    }
+    return {
+      imageAvailable: true,
+      image_url: buildDriveImageUrl_(fileId, getDriveResourceKey_(file))
+    };
+  } catch (ignored) {
+    return { imageAvailable: false, image_url: '' };
+  }
 }
 
 function equipmentImageSourceMatches_(current, before) {

@@ -988,7 +988,7 @@
     var reason = value(form.elements.reason.value).trim();
     var confirmed = await CRS.confirm({
       title: 'ยืนยันยกเลิก Operation อัปโหลดภาพ',
-      message: 'ระบบจะยกเลิกเฉพาะ Operation ที่ยังไม่เปลี่ยนอุปกรณ์ และย้ายไฟล์ของคำสั่งนี้ไปถังขยะเมื่อยืนยันได้อย่างปลอดภัย',
+      message: 'ระบบจะยกเลิกเฉพาะ Operation ที่ยังไม่เปลี่ยนอุปกรณ์ และย้ายไฟล์ของคำสั่งนี้ไปถังขยะเมื่อยืนยันได้อย่างปลอดภัย หากตรวจไฟล์ไม่ได้จะคงไฟล์ไว้และแจ้งให้ตรวจ Drive เพิ่มเติม',
       confirmText: 'ยืนยันยกเลิก',
       tone: 'danger'
     });
@@ -999,7 +999,8 @@
       var result = await CRS.withLoading(function () {
         return CRS.runMutation('admin-operation-abort:' + operationId, 'adminAbortOperation', {
           operation_id: operationId,
-          reason: reason
+          reason: reason,
+          allow_unverified_cleanup: true
         });
       }, 'กำลังยกเลิก Operation อย่างปลอดภัย…');
       bootstrap.Modal.getOrCreateInstance(form.closest('.modal')).hide();
@@ -1070,6 +1071,133 @@
     }
   }
 
+  function imageIntegrityIssueRow(issue) {
+    var labels = {
+      UNAVAILABLE_REFERENCE: 'ไฟล์หายหรือเข้าถึงไม่ได้',
+      TRASHED_REFERENCE: 'ไฟล์ถูกย้ายไปถังขยะ',
+      STALE_URL: 'มี URL เก่าที่ไม่มีรหัสไฟล์',
+      ORPHAN_FILE: 'ไฟล์กำพร้าในโฟลเดอร์ภาพ',
+      STARTED_UPLOAD: 'การอัปโหลดค้างอยู่',
+      HISTORICAL_FOLDER_UNREADABLE: 'อ่านโฟลเดอร์ภาพเดิมไม่ได้',
+      HISTORICAL_FOLDER_EVIDENCE_INVALID: 'หลักฐานโฟลเดอร์ใน Operation ไม่สมบูรณ์'
+    };
+    var detail = issue.asset_id || issue.file_name || issue.folder_id || issue.operation_id || issue.file_id;
+    var id = issue.file_id || issue.operation_id || '';
+    var actions = [];
+    if (issue.kind === 'STARTED_UPLOAD') {
+      actions.push('<button type="button" class="btn btn-sm btn-outline-secondary" ' +
+        'data-action="view-admin-operation" data-operation-id="' + escape(issue.operation_id) +
+        '">ตรวจสอบ</button>');
+      actions.push('<button type="button" class="btn btn-sm btn-warning" ' +
+        'data-action="repair-image-integrity" data-kind="STARTED_UPLOAD" data-operation-id="' +
+        escape(issue.operation_id) + '">กู้คืน</button>');
+    } else if (issue.kind === 'ORPHAN_FILE') {
+      actions.push('<a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer" ' +
+        'href="https://drive.google.com/file/d/' + encodeURIComponent(issue.file_id) +
+        '/view">ตรวจสอบ</a>');
+      if (issue.can_repair) actions.push('<button type="button" class="btn btn-sm btn-outline-danger" ' +
+        'data-action="repair-image-integrity" data-kind="ORPHAN_FILE" data-file-id="' +
+        escape(issue.file_id) + '">ย้ายไปถังขยะ</button>');
+    } else if (issue.asset_id) {
+      actions.push('<button type="button" class="btn btn-sm btn-outline-primary" ' +
+        'data-action="open-admin-asset" data-asset-id="' + escape(issue.asset_id) +
+        '">เปิดอุปกรณ์เพื่ออัปโหลดใหม่</button>');
+    } else if (issue.kind === 'HISTORICAL_FOLDER_UNREADABLE' && issue.folder_id) {
+      actions.push('<a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer" ' +
+        'href="https://drive.google.com/drive/folders/' + encodeURIComponent(issue.folder_id) +
+        '">ตรวจสอบโฟลเดอร์</a>');
+    }
+    return '<tr><td><strong>' + escape(labels[issue.kind] || issue.kind) + '</strong>' +
+      '<small class="d-block text-body-secondary">' + escape(issue.kind) + '</small></td>' +
+      '<td class="text-break">' + escape(text(detail)) +
+      (id && id !== detail ? '<small class="d-block text-body-secondary">' + escape(id) + '</small>' : '') +
+      (issue.folder_id && issue.folder_id !== detail ?
+        '<small class="d-block text-body-secondary">โฟลเดอร์ ' + escape(issue.folder_id) + '</small>' : '') +
+      '</td><td><div class="d-flex flex-wrap justify-content-end gap-2">' + actions.join('') +
+      '</div></td></tr>';
+  }
+
+  function renderImageIntegrity(context, audit) {
+    context.imageIntegrityLoaded = true;
+    context.data.imageIntegrity = audit;
+    var host = CRS.$('#admin-image-integrity-result', context.page);
+    var summary = audit.summary || {};
+    var counts = summary.counts || {};
+    var issues = Array.isArray(audit.issues) ? audit.issues : [];
+    var countLabels = [
+      ['unavailable_references', 'ไฟล์หาย/เข้าไม่ถึง'],
+      ['trashed_references', 'ไฟล์อยู่ในถังขยะ'],
+      ['stale_urls', 'URL ค้าง'],
+      ['orphan_files', 'ไฟล์กำพร้า'],
+      ['started_uploads', 'อัปโหลดค้าง'],
+      ['unreadable_folders', 'โฟลเดอร์เดิมอ่านไม่ได้'],
+      ['invalid_folder_evidence', 'หลักฐานโฟลเดอร์ผิดพลาด']
+    ];
+    var badges = countLabels.map(function (entry) {
+      return '<span class="badge text-bg-light border me-2 mb-2">' + escape(entry[1]) + ' ' +
+        Number(counts[entry[0]] || 0).toLocaleString('th-TH') + '</span>';
+    }).join('');
+    host.innerHTML = '<div class="alert ' + (Number(summary.total_issues || 0) ? 'alert-warning' : 'alert-success') +
+      '"><strong>' + (Number(summary.total_issues || 0) ? 'พบรายการที่ต้องตรวจสอบ' : 'ไม่พบปัญหาภาพ') +
+      '</strong><small class="d-block mt-1">ตรวจเมื่อ ' + escape(CRS.formatDateTime(audit.generated_at)) +
+      (summary.truncated ? ' · แสดง ' + Number(summary.returned_issues || issues.length).toLocaleString('th-TH') +
+        ' รายการแรก' : '') + '</small></div><div class="mb-2">' + badges + '</div>' +
+      (issues.length ? '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+        '<caption class="visually-hidden">รายการตรวจสอบความสมบูรณ์ของภาพอุปกรณ์</caption>' +
+        '<thead><tr><th scope="col">ปัญหา</th><th scope="col">รายการ</th>' +
+        '<th scope="col" class="text-end">การทำงาน</th></tr></thead><tbody>' +
+        issues.map(imageIntegrityIssueRow).join('') + '</tbody></table></div>' : '');
+    setVisible(host, true);
+  }
+
+  async function previewImageIntegrity(context) {
+    var button = CRS.$('#admin-preview-image-integrity', context.page);
+    button.disabled = true;
+    try {
+      var audit = await CRS.withLoading(function () { return CRS.api.adminPreviewImageIntegrity(); },
+        'กำลังตรวจสอบภาพอุปกรณ์…');
+      if (alive(context)) renderImageIntegrity(context, audit || {});
+    } catch (error) {
+      CRS.handleError(error);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function repairImageIntegrity(context, button) {
+    var kind = button.dataset.kind;
+    var isOrphan = kind === 'ORPHAN_FILE';
+    if (!isOrphan && kind !== 'STARTED_UPLOAD') return;
+    var identifier = isOrphan ? button.dataset.fileId : button.dataset.operationId;
+    var confirmed = await CRS.confirm({
+      title: isOrphan ? 'ย้ายไฟล์กำพร้าไปถังขยะ' : 'กู้คืนการอัปโหลดภาพ',
+      message: (isOrphan ? 'ระบบจะตรวจอีกครั้งว่าไฟล์ไม่มีอุปกรณ์หรือ operation ค้างอ้างอิง ก่อนย้ายไฟล์ไปถังขยะ: ' :
+        'ระบบจะตรวจไฟล์และข้อมูลอุปกรณ์ปัจจุบันก่อนกู้คืน operation: ') + identifier,
+      confirmText: isOrphan ? 'ยืนยันย้ายไปถังขยะ' : 'ยืนยันกู้คืน',
+      tone: isOrphan ? 'danger' : 'warning'
+    });
+    if (!confirmed || !alive(context)) return;
+    button.disabled = true;
+    try {
+      var input = { kind: kind, confirm: true };
+      if (isOrphan) input.file_id = identifier;
+      else input.operation_id = identifier;
+      var result = await CRS.withLoading(function () {
+        return CRS.api.adminRepairImageIntegrity(input);
+      }, isOrphan ? 'กำลังตรวจและย้ายไฟล์…' : 'กำลังกู้คืนภาพ…');
+      if (!alive(context)) return;
+      CRS.toast(result && result.status === 'ABORTED' ?
+        'ไฟล์เดิมไม่พร้อมใช้งาน กู้คืนแล้วสามารถอัปโหลดใหม่ได้' :
+        (isOrphan ? 'ย้ายไฟล์กำพร้าไปถังขยะแล้ว' : 'กู้คืนภาพเรียบร้อยแล้ว'),
+      result && result.status === 'ABORTED' ? 'warning' : 'success');
+      await Promise.all([previewImageIntegrity(context), loadOperations(context)]);
+    } catch (error) {
+      CRS.handleError(error);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   function renderAssetSummary(context, dashboard) {
     var metrics = dashboard.metrics || {};
     var definitions = [
@@ -1129,6 +1257,7 @@
     if (context.activeTab === 'system') {
       var tasks = [loadOperations(context)];
       if (context.integrityLoaded) tasks.push(runIntegrity(context));
+      if (context.imageIntegrityLoaded) tasks.push(previewImageIntegrity(context));
       await Promise.all(tasks);
       return;
     }
@@ -1234,6 +1363,8 @@
         if (category) openCategoryForm(context, category); else CRS.toast('ไม่พบข้อมูลหมวดหมู่ กรุณารีเฟรชรายการ', 'warning');
       }
       if (action === 'run-integrity-audit') runIntegrity(context);
+      if (action === 'preview-image-integrity') previewImageIntegrity(context);
+      if (action === 'repair-image-integrity') repairImageIntegrity(context, target);
       if (action === 'view-admin-operation') openOperation(context, target.dataset.operationId);
       if (action === 'reconcile-operation') reconcileOperation(context, target);
       if (action === 'open-abort-operation') openAbortForm(context, target);
@@ -1309,12 +1440,14 @@
           sortBy: 'started_at', sortDirection: 'desc',
           page: 1, pageSize: pageSize }
       },
-      data: { borrow: null, users: null, categories: null, history: null, operations: null },
+      data: { borrow: null, users: null, categories: null, history: null,
+        operations: null, imageIntegrity: null },
       editingUser: null,
       editingCategory: null,
       currentOperation: null,
       activeBorrow: null,
       integrityLoaded: false,
+      imageIntegrityLoaded: false,
       summaryLoaded: false,
       summaryPromise: null
     };

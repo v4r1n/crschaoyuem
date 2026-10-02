@@ -93,3 +93,14 @@ test('available thumbnails replace placeholders in catalog, detail, and borrow',
   await expect(page.locator('#borrow-equipment-image')).toBeVisible();
   await expect(page.locator('#borrow-equipment-image-fallback')).toBeHidden();
 });
+
+test('an uploaded image remains visible to an authenticated user when Drive thumbnails reject the browser', async ({ page }) => {
+  await page.route('https://drive.google.com/thumbnail**', (route) =>
+    route.fulfill({ status: 403, contentType: 'text/plain', body: 'Forbidden' }));
+  await openAuthenticated(page, '/?view=equipment&role=admin&image=available');
+  await expect(page.locator('#equipment-card-list article').first().locator('img[data-equipment-image]')).toBeVisible();
+  await navigate(page, 'equipment-detail');
+  await expect(page.locator('#equipment-detail-image')).toBeVisible();
+  await navigate(page, 'borrow');
+  await expect(page.locator('#borrow-equipment-image')).toBeVisible();
+});

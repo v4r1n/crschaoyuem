@@ -48,6 +48,7 @@ const PUBLIC_RPC_NAMES = Object.freeze([
   'getBorrowDetail',
   'getDashboard',
   'getEquipmentDetail',
+  'getEquipmentImage',
   'listCategories',
   'listEquipment',
   'listMyBorrowing',

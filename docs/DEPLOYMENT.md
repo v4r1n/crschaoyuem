@@ -1,6 +1,6 @@
 # คู่มือติดตั้ง Deploy และส่งมอบระบบ
 
-คู่มือนี้ใช้สำหรับนำ CRS Yuem-Kuen System รุ่น `0.1.7` ไปติดตั้งบน Google Workspace จริง ตั้งแต่สร้างทรัพยากรจนถึงตรวจรับ Workspace/Gmail User/Admin และดูแลหลังเปิดใช้งาน ขั้นตอนทั้งหมดใช้บริการของ Google และไม่ต้องมี VPS หรือฐานข้อมูลแยก
+คู่มือนี้ใช้สำหรับนำ CRS Yuem-Kuen รุ่น `0.1.7` ไปติดตั้งบน Google Workspace จริง ตั้งแต่สร้างทรัพยากรจนถึงตรวจรับ Workspace/Gmail User/Admin และดูแลหลังเปิดใช้งาน ขั้นตอนทั้งหมดใช้บริการของ Google และไม่ต้องมี VPS หรือฐานข้อมูลแยก
 
 เลข Apps Script version เป็นเลข snapshot ของ Google แยกจากเลขเวอร์ชันแอปที่แสดงใน Sidebar. กำหนด baseline v16 เป็น release `0.1.6`; release ถัดไปบน Apps Script v17 ใช้ `0.1.7`. Snapshot v16 แก้ย้อนหลังไม่ได้และเดิมอาจยังแสดง `0.2.0`; อย่าอ้างว่า UI ของ v16 ถูกเปลี่ยนแล้ว. ต่อจากนี้ทุกครั้งที่สร้าง Apps Script version ใหม่ให้เพิ่มเลข patch ของแอปใน `src/Config.gs`, `package.json` และ `package-lock.json` ก่อนทดสอบและ deploy; บันทึกคู่เลขทั้งสองใน change record. `APP_VERSION` เป็นค่าจาก source เท่านั้น แม้มี Script Property ชื่อนี้ก็จะไม่ override เวอร์ชันแอป.
 
@@ -37,7 +37,7 @@
 ## 1. สร้าง Google Sheet
 
 1. ลงชื่อเข้าใช้ด้วยบัญชี Workspace ที่จะเป็นผู้ deploy
-2. สร้าง Google Sheet เปล่า เช่น `CRS Yuem-Kuen System`
+2. สร้าง Google Sheet เปล่า เช่น `CRS Yuem-Kuen`
 3. ไม่ต้องสร้าง tab หรือ header เอง `setupSystem_()` จะสร้างและตรวจ schema ให้ทั้งหมด
 4. เปิด URL ของ Sheet แล้วคัดลอกข้อความระหว่าง `/d/` และ `/edit` เก็บเป็น `SPREADSHEET_ID`
 5. จำกัด Share ของ Sheet ไว้เฉพาะบัญชีผู้ deploy และผู้ดูแลข้อมูลที่จำเป็น ผู้ใช้ระบบทั่วไปต้องไม่มีสิทธิ์ตรงทุกระดับ รวม Viewer/Commenter และสิทธิ์ที่ได้ผ่าน group/link
@@ -52,7 +52,7 @@ https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit
 
 ## 2. เปิด Apps Script
 1. ไปที่ [script.google.com](https://script.google.com/) แล้วเลือก **New project** เพื่อสร้าง standalone project
-2. ตั้งชื่อ Apps Script project เป็น `CRS Yuem-Kuen System`
+2. ตั้งชื่อ Apps Script project เป็น `CRS Yuem-Kuen`
 3. เปิด **Project Settings** แล้วตรวจ Time zone เป็น `(GMT+07:00) Bangkok`
 4. เปิดตัวเลือก **Show "appsscript.json" manifest file in editor**
 5. บันทึก Script ID และเจ้าของ project ไว้ใน change record ขององค์กร โดยไม่ใส่ค่าจริงลง Git
@@ -172,7 +172,7 @@ Script Properties เป็นค่าร่วมของทั้ง web app
 
 **สถานะการส่งรูปปัจจุบัน:** แอปส่ง `drive.google.com/thumbnail` ให้ browser โหลดตรง สิทธิ์ล็อกอินของ CRS ใช้กับ RPC แต่ไม่ได้ติดไปกับคำขอรูปของ Drive ดังนั้น Gmail ที่เข้าแอปได้อาจยังเปิดรูปไม่ได้เมื่อไฟล์เป็น `DOMAIN_WITH_LINK`; ค่า `imageAvailable` ตรวจว่า backend เข้าถึงไฟล์ได้ ไม่ได้รับรองว่า browser ของผู้ใช้เข้าถึงได้ [การแชร์ไฟล์ของ Google Drive](https://support.google.com/drive/answer/2494822), [สิทธิ์ที่ Web app ใช้ทำงาน](https://developers.google.com/apps-script/manifest/web-app-api-executable)
 
-แนวทาง private delivery ที่เสนอไว้ใน [สถาปัตยกรรม](ARCHITECTURE.md#image-delivery-audit-and-proposed-private-mode-not-implemented) ยังไม่พร้อมใช้งาน: เพิ่ม RPC อ่านภาพที่ตรวจ CRS session/Users row แล้วส่ง image bytes จากสิทธิ์ผู้ deploy ให้ browser เฉพาะภาพที่ Equipment อ้างอิง จึงจะย้ายโฟลเดอร์และไฟล์เดิมไปเป็น Restricted ได้โดยยังรองรับ Gmail ต้องทดสอบ Pilot ด้วยบัญชี YRU และ Gmail, ไฟล์ที่ถูกลบ/ย้าย Trash, logout/session expiry, ขนาดภาพจริง และภาพ GIF ก่อนย้ายสิทธิ์ ห้ามตั้ง `IMAGE_SHARING=PRIVATE` ตอนนี้ เพราะ source ยอมรับเพียงสอง mode ข้างต้น และอย่าเปลี่ยนโฟลเดอร์เป็น public เพื่อแก้อาการ Gmail ดูรูปไม่ขึ้น
+Pilot 0.1.12 เพิ่ม fallback อ่านภาพผ่าน RPC ที่ตรวจ CRS session/Users row และอ่านเฉพาะไฟล์ที่ Equipment อ้างอิง เมื่อ browser โหลด Drive thumbnail โดยตรงไม่สำเร็จ ดูรายละเอียดใน [สถาปัตยกรรม](ARCHITECTURE.md#image-delivery-audit-and-authenticated-fallback) ต้องทดสอบ Pilot ด้วยบัญชี YRU และ Gmail, ไฟล์ที่ถูกลบ/ย้าย Trash, logout/session expiry, ขนาดภาพจริง และภาพ GIF ก่อนย้ายสิทธิ์โฟลเดอร์หรือไฟล์เป็น Restricted ห้ามตั้ง `IMAGE_SHARING=PRIVATE` ตอนนี้ เพราะ source ยอมรับเพียงสอง mode ข้างต้น และอย่าเปลี่ยนโฟลเดอร์เป็น public เพื่อแก้อาการ Gmail ดูรูปไม่ขึ้น
 
 ## 6. ตั้ง Admin, allowed domains และ Google OAuth Client
 
@@ -221,7 +221,7 @@ Schema v3 ยังคงใช้ verified email เป็น authorization key
 | Property | ค่าที่แนะนำ | ความหมาย |
 |---|---:|---|
 | `AUTO_PROVISION_USERS` | `false` | บังคับ: ผู้ใช้ต้องถูกเพิ่มโดย Admin ก่อน; identity path ไม่ auto-provision |
-| `APP_NAME` | `CRS Yuem-Kuen System` | ชื่อเต็มบน browser/page title และ metadata ของแอป |
+| `APP_NAME` | `CRS Yuem-Kuen` | ชื่อเต็มบน browser/page title และ metadata ของแอป |
 | `APP_SHORT_NAME` | `CRS Yuem-Kuen` | ชื่อสั้นบน navigation, login และส่วน branding ที่พื้นที่จำกัด |
 | `TIMEZONE` | `Asia/Bangkok` | timezone ธุรกิจ |
 | `LOCALE` | `th_TH` | locale ของ Sheet |

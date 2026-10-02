@@ -1,4 +1,4 @@
-# CRS Yuem-Kuen System Deployment Acceptance Matrix
+# CRS Yuem-Kuen Deployment Acceptance Matrix
 
 Automated local acceptance runs with `npm run test`. The following checks intentionally require the deployer's Google Workspace resources, OAuth Web Client, accounts, browsers, and physical devices and must be completed against the versioned `/exec` deployment that contains the external-account release.
 

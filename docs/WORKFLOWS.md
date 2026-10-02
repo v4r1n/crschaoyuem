@@ -1,4 +1,4 @@
-# CRS Yuem-Kuen System Workflows and State Contracts
+# CRS Yuem-Kuen Workflows and State Contracts
 
 ## Booking model
 

@@ -401,6 +401,93 @@
     return /^https:\/\/drive\.google\.com\/thumbnail\?/i.test(url) ? url : '';
   };
 
+  const imageRequestQueue = [];
+  const pendingImageRequests = new Map();
+  const imageObjectUrls = new WeakMap();
+  let activeImageRequests = 0;
+  let imageRequestSerial = 0;
+
+  function pumpImageRequests() {
+    while (activeImageRequests < 3 && imageRequestQueue.length) {
+      const request = imageRequestQueue.shift();
+      activeImageRequests += 1;
+      CRS.api.getEquipmentImage(request.assetId, request.version).then(
+        request.resolve, request.reject
+      ).then(function () {
+        activeImageRequests -= 1;
+        pumpImageRequests();
+      }, function () {
+        activeImageRequests -= 1;
+        pumpImageRequests();
+      });
+    }
+  }
+
+  function fetchEquipmentImage(assetId, version) {
+    const key = assetId + ':' + version;
+    if (pendingImageRequests.has(key)) return pendingImageRequests.get(key);
+    const promise = new Promise(function (resolve, reject) {
+      imageRequestQueue.push({ assetId: assetId, version: version, resolve: resolve, reject: reject });
+      pumpImageRequests();
+    });
+    pendingImageRequests.set(key, promise);
+    promise.then(function () { pendingImageRequests.delete(key); },
+      function () { pendingImageRequests.delete(key); });
+    return promise;
+  }
+
+  CRS.cancelEquipmentImage = function (image) {
+    if (!image) return;
+    image.dataset.imageRequestSerial = String(++imageRequestSerial);
+    const objectUrl = imageObjectUrls.get(image);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    imageObjectUrls.delete(image);
+  };
+
+  CRS.recoverEquipmentImage = async function (image, fallback, record) {
+    if (!image || !record || !/^AST-\d{6}$/.test(String(record.asset_id || '')) ||
+      !Number.isSafeInteger(Number(record.row_version))) return;
+    CRS.cancelEquipmentImage(image);
+    const serial = image.dataset.imageRequestSerial;
+    const version = Number(record.row_version);
+    try {
+      const result = await fetchEquipmentImage(record.asset_id, version);
+      if (!image.isConnected || image.dataset.imageRequestSerial !== serial ||
+        !result || result.available !== true || Number(result.row_version) !== version ||
+        !/^(image\/jpeg|image\/png|image\/webp|image\/gif)$/.test(result.mime_type) ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(result.base64_data || '') ||
+        result.base64_data.length > 14 * 1024 * 1024) return;
+      const binary = atob(result.base64_data);
+      const bytes = Uint8Array.from(binary, function (character) { return character.charCodeAt(0); });
+      const objectUrl = URL.createObjectURL(new Blob([bytes], { type: result.mime_type }));
+      imageObjectUrls.set(image, objectUrl);
+      function releaseObjectUrl() {
+        URL.revokeObjectURL(objectUrl);
+        if (imageObjectUrls.get(image) === objectUrl) imageObjectUrls.delete(image);
+      }
+      image.onload = function () {
+        releaseObjectUrl();
+        image.hidden = false;
+        image.classList.remove('d-none', 'opacity-0');
+        if (fallback) { fallback.hidden = true; fallback.classList.add('d-none'); }
+      };
+      image.onerror = function () {
+        releaseObjectUrl();
+        image.removeAttribute('src');
+        image.hidden = true;
+        image.classList.add('d-none');
+        if (fallback) { fallback.hidden = false; fallback.classList.remove('d-none'); }
+      };
+      image.loading = 'eager';
+      image.hidden = false;
+      image.classList.remove('d-none');
+      image.classList.add('opacity-0');
+      image.src = objectUrl;
+    } catch (ignored) {
+      // A failed protected read keeps the standard image placeholder visible.
+    }
+  };
+
   CRS.setText = function (target, value) {
     const element = typeof target === 'string' ? CRS.$(target) : target;
     if (element) element.textContent = value === undefined || value === null ? '' : String(value);
@@ -788,7 +875,7 @@
     });
     CRS.setText('#page-title', routeTitles[route] || 'ระบบยืม–คืนอุปกรณ์');
     document.title = (routeTitles[route] || 'ระบบยืม–คืนอุปกรณ์') + ' · ' +
-      ((CRS.state.bootstrap && CRS.state.bootstrap.app.name) || 'CRS Yuem-Kuen System');
+      ((CRS.state.bootstrap && CRS.state.bootstrap.app.name) || 'CRS Yuem-Kuen');
   }
 
   CRS.renderRoute = async function (route, params) {

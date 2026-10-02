@@ -1,10 +1,15 @@
-# CRS Yuem-Kuen System Changelog
+# CRS Yuem-Kuen Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### 0.1.12 (2026-10-02)
+
+- Equipment images now fall back to a session-gated Apps Script read when the browser cannot load a Drive thumbnail. The server reads only the image file referenced by Equipment, validates its type and content, and returns a placeholder when the image is unavailable. Drive sharing settings are unchanged.
+- The Pilot display name is shortened to CRS Yuem-Kuen.
 
 ### 0.1.11 (2026-10-02)
 

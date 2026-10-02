@@ -30,6 +30,7 @@
     const fallback = CRS.$('#borrow-equipment-image-fallback', page);
     const imageUrl = equipment.imageAvailable === false ? '' : CRS.safeImageUrl(equipment.image_url);
     if (image) {
+      CRS.cancelEquipmentImage(image);
       image.removeAttribute('src');
       setVisible(image, false);
       setVisible(fallback, true);
@@ -38,6 +39,7 @@
         image.removeAttribute('src');
         setVisible(image, false);
         setVisible(fallback, true);
+        CRS.recoverEquipmentImage(image, fallback, equipment);
       };
       if (imageUrl) {
         image.alt = 'รูป ' + equipment.name;

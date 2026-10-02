@@ -5,6 +5,39 @@ var IMAGE_MIME_TYPES = Object.freeze({
   'image/gif': 'gif'
 });
 
+function getEquipmentImage_(assetId, expectedVersion, user) {
+  user = assertUserActor_(user);
+  var normalizedId = requireAssetId_(assetId);
+  var equipment = findRecordById_(SHEETS.EQUIPMENT, 'asset_id', normalizedId);
+  assertApp_(equipment && (equipment.status !== EQUIPMENT_STATUS.DELETED ||
+    user.role === USER_ROLE.ADMIN), 'NOT_FOUND', 'ไม่พบอุปกรณ์ที่ต้องการ', null, false);
+  if (Number(expectedVersion) !== Number(equipment.row_version)) {
+    return { available: false, reason: 'STALE_VERSION' };
+  }
+  var file = getImageFileIfPresent_(equipment.image_file_id);
+  if (!file) return { available: false, reason: 'IMAGE_UNAVAILABLE' };
+  try {
+    var mimeType = String(file.getMimeType() || '').toLowerCase();
+    var size = Number(file.getSize());
+    var maximumBytes = 10 * 1024 * 1024;
+    if (!IMAGE_MIME_TYPES[mimeType] || !Number.isSafeInteger(size) ||
+      size <= 0 || size > maximumBytes) {
+      return { available: false, reason: 'IMAGE_UNAVAILABLE' };
+    }
+    var blob = file.getBlob();
+    var bytes = blob.getBytes();
+    if (String(blob.getContentType() || '').toLowerCase() !== mimeType ||
+      bytes.length !== size || bytes.length > maximumBytes) {
+      return { available: false, reason: 'IMAGE_UNAVAILABLE' };
+    }
+    assertImageSignature_(bytes, mimeType);
+    return { available: true, mime_type: mimeType,
+      base64_data: Utilities.base64Encode(bytes), row_version: Number(equipment.row_version) };
+  } catch (ignored) {
+    return { available: false, reason: 'IMAGE_UNAVAILABLE' };
+  }
+}
+
 function uploadEquipmentImage_(input, actor) {
   input = input || {};
   var assetId = requireAssetId_(input.asset_id);

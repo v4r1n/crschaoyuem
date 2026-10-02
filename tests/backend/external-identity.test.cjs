@@ -34,7 +34,7 @@ test('YRU and Gmail authenticate through code exchange to their own Users row', 
     const bootstrap = expectOk(h.invoke('getAppBootstrap'));
     assert.equal(bootstrap.session.email, email);
     assert.equal(bootstrap.session.role, 'USER');
-    assert.equal(bootstrap.app.name, 'CRS Yuem-Kuen System');
+    assert.equal(bootstrap.app.name, 'CRS Yuem-Kuen');
     assert.equal(bootstrap.app.shortName, 'CRS Yuem-Kuen');
   }
   assert.notEqual(sessions[0], sessions[1]);

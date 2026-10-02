@@ -55,6 +55,12 @@ function getEquipmentDetail(sessionToken, assetId) {
   });
 }
 
+function getEquipmentImage(sessionToken, assetId, expectedVersion) {
+  return executeUserRpc_(sessionToken, function (user) {
+    return getEquipmentImage_(assetId, expectedVersion, user);
+  });
+}
+
 function listCategories(sessionToken) {
   return executeUserRpc_(sessionToken, function () {
     return activeCategoryDtos_();

@@ -1,4 +1,4 @@
-# CRS Yuem-Kuen System Architectural Decisions
+# CRS Yuem-Kuen Architectural Decisions
 
 Decisions are append-only. A later decision may supersede an earlier one but must not erase it.
 

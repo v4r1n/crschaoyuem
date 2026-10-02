@@ -216,9 +216,9 @@
   function bootstrapData() {
     return {
       app: {
-        name: 'CRS Yuem-Kuen System',
+        name: 'CRS Yuem-Kuen',
         shortName: 'CRS Yuem-Kuen',
-        version: '0.1.11',
+        version: '0.1.12',
         timezone: 'Asia/Bangkok',
         locale: 'th-TH',
         webAppUrl: controls.get('qr') === 'unset'
@@ -346,6 +346,16 @@
     if (method === 'getDashboard' || method === 'adminGetDashboard') return dashboardData();
     if (method === 'listEquipment') return equipmentList(input);
     if (method === 'getEquipmentDetail') return findEquipment(input);
+    if (method === 'getEquipmentImage') {
+      var imageRecord = equipment.find(function (record) { return record.asset_id === input; });
+      if (imageScenario !== 'available' || !imageRecord ||
+        Number(args[1]) !== Number(imageRecord.row_version)) {
+        return { available: false, reason: 'IMAGE_UNAVAILABLE' };
+      }
+      return { available: true, mime_type: 'image/gif',
+        base64_data: 'R0lGODlhAQABAAD/ACwAAAAAAQABAAACAUwAOw==',
+        row_version: Number(imageRecord.row_version) };
+    }
     if (method === 'listCategories') return clone(categories);
     if (method === 'createBorrowRequest') {
       return Object.assign(clone(borrowing[0]), {

@@ -3,9 +3,9 @@
  * Script Properties override deployment settings; the app release version is source-controlled.
  */
 var CONFIG = Object.freeze({
-  APP_NAME: 'CRS Yuem-Kuen System',
+  APP_NAME: 'CRS Yuem-Kuen',
   APP_SHORT_NAME: 'CRS Yuem-Kuen',
-  APP_VERSION: '0.1.11',
+  APP_VERSION: '0.1.12',
   SPREADSHEET_ID: '',
   DRIVE_FOLDER_ID: '',
   WEB_APP_URL: '',

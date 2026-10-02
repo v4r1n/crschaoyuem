@@ -167,7 +167,8 @@
   function imageMarkup(record, className) {
     var imageUrl = record.imageAvailable === false ? '' : safeImage(record.image_url);
     if (!imageUrl) return imagePlaceholderMarkup();
-    return '<img data-equipment-image data-src="' + escape(imageUrl) + '" class="' +
+    return '<img data-equipment-image data-asset-id="' + escape(safeAssetId(record.asset_id)) +
+      '" data-row-version="' + escape(record.row_version) + '" data-src="' + escape(imageUrl) + '" class="' +
       escape(className || 'w-100 h-100 object-fit-contain') + ' opacity-0" alt="ภาพ' +
       escape(record.name) + '" loading="lazy" referrerpolicy="no-referrer">' +
       imagePlaceholderMarkup();
@@ -176,6 +177,11 @@
   function loadListImages(host) {
     CRS.$$('img[data-equipment-image]', host).forEach(function (image) {
       var fallback = image.nextElementSibling;
+      var record = (listResult.items || []).find(function (item) {
+        return item.asset_id === image.dataset.assetId &&
+          Number(item.row_version) === Number(image.dataset.rowVersion);
+      });
+      CRS.cancelEquipmentImage(image);
       image.onload = function () {
         image.classList.remove('opacity-0');
         setVisible(fallback, false);
@@ -184,6 +190,7 @@
         image.removeAttribute('src');
         setVisible(image, false);
         setVisible(fallback, true);
+        CRS.recoverEquipmentImage(image, fallback, record);
       };
       image.src = image.dataset.src;
     });
@@ -337,8 +344,14 @@
     var image = CRS.$('#equipment-detail-image', detailPage);
     var fallback = CRS.$('#equipment-detail-image-fallback', detailPage);
     var imageUrl = record.imageAvailable === false ? '' : safeImage(record.image_url);
+    CRS.cancelEquipmentImage(image);
     image.onload = function () { setVisible(image, true); setVisible(fallback, false); };
-    image.onerror = function () { image.removeAttribute('src'); setVisible(image, false); setVisible(fallback, true); };
+    image.onerror = function () {
+      image.removeAttribute('src');
+      setVisible(image, false);
+      setVisible(fallback, true);
+      CRS.recoverEquipmentImage(image, fallback, record);
+    };
     image.removeAttribute('src');
     setVisible(image, false);
     setVisible(fallback, true);

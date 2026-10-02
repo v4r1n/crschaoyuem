@@ -1,8 +1,8 @@
 {
   "name": "crs-yuem-kuen-system",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
-  "description": "Local automated acceptance tests for CRS Yuem-Kuen System on Google Apps Script.",
+  "description": "Local automated acceptance tests for CRS Yuem-Kuen on Google Apps Script.",
   "scripts": {
     "test": "npm run test:contracts && npm run test:backend && npm run test:frontend",
     "test:contracts": "node --test tests/contracts/project-contract.test.js",

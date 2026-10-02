@@ -56,7 +56,7 @@ test('equipment editor scrolls its fields with the mouse while header and action
 
 test('equipment image drop zone browses and accepts dropped GIF files with a preview', async ({ page }) => {
   await openAuthenticated(page, '/?view=equipment-detail&id=AST-000001&role=admin', 'equipment-detail');
-  await expect(page.locator('[data-app-version]')).toHaveText('0.1.11');
+  await expect(page.locator('[data-app-version]')).toHaveText('0.1.12');
   await page.locator('[data-action="upload-image"]').click();
   const form = page.locator('#equipment-image-form');
   const zone = form.locator('[data-image-dropzone]');
@@ -324,7 +324,7 @@ test('bootstrap fails closed and keeps the admin route role-gated', async ({ pag
   await expect(page.locator('#dashboard-content')).toBeVisible();
   await expect(page.locator('[data-app-short-name]').first()).toHaveText('CRS Yuem-Kuen');
   await expect(page.locator('[data-app-name]')).toHaveCount(0);
-  await expect(page).toHaveTitle('หน้าหลัก · CRS Yuem-Kuen System');
+  await expect(page).toHaveTitle('หน้าหลัก · CRS Yuem-Kuen');
   await expect(page.locator('[data-session-name]').first()).toHaveText('ผู้ดูแลทดสอบ');
   await expect(page.locator('[data-route="admin"]').first()).toBeVisible();
 

@@ -176,6 +176,7 @@ test('server exposes only the guarded RPCs and deliberate Apps Script entry poin
     'getBorrowDetail',
     'getDashboard',
     'getEquipmentDetail',
+    'getEquipmentImage',
     'listCategories',
     'listEquipment',
     'listMyBorrowing',
@@ -517,12 +518,12 @@ test('canonical CRS Yuem-Kuen branding is consistent across runtime and manifest
   const brandingSurface = [config, api, index, admin, qr, read('README.md'),
     read('docs/DEPLOYMENT.md')].join('\n');
 
-  assert.match(config, /APP_NAME:\s*'CRS Yuem-Kuen System'/);
+  assert.match(config, /APP_NAME:\s*'CRS Yuem-Kuen'/);
   assert.match(config, /APP_SHORT_NAME:\s*'CRS Yuem-Kuen'/);
   assert.match(api, /shortName:\s*config\.APP_SHORT_NAME/);
   assert.match(index, /data-app-short-name>CRS Yuem-Kuen</);
   assert.doesNotMatch(index, /data-app-name/);
-  assert.match(admin, /CRS Yuem-Kuen System/);
+  assert.match(admin, /CRS Yuem-Kuen/);
   assert.match(qr, /fillText\('CRS Yuem-Kuen'/);
   assert.equal(packageManifest.name, 'crs-yuem-kuen-system');
   assert.equal(packageLock.name, 'crs-yuem-kuen-system');
@@ -534,10 +535,10 @@ test('displayed app version is source-controlled and matches the package release
   const config = read('src/Config.gs');
   const manifest = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
-  assert.equal(manifest.version, '0.1.11');
+  assert.equal(manifest.version, '0.1.12');
   assert.equal(lock.version, manifest.version);
   assert.equal(lock.packages[''].version, manifest.version);
-  assert.match(config, /APP_VERSION:\s*'0\.1\.11'/);
+  assert.match(config, /APP_VERSION:\s*'0\.1\.12'/);
   assert.match(config, /APP_VERSION:\s*CONFIG\.APP_VERSION/);
   assert.doesNotMatch(config, /APP_VERSION:\s*valueOrDefault_\(properties\.APP_VERSION/);
 });

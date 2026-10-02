@@ -56,13 +56,15 @@ test('equipment editor scrolls its fields with the mouse while header and action
 
 test('equipment image drop zone browses and accepts dropped GIF files with a preview', async ({ page }) => {
   await openAuthenticated(page, '/?view=equipment-detail&id=AST-000001&role=admin', 'equipment-detail');
-  await expect(page.locator('[data-app-version]')).toHaveText('0.1.10');
+  await expect(page.locator('[data-app-version]')).toHaveText('0.1.11');
   await page.locator('[data-action="upload-image"]').click();
   const form = page.locator('#equipment-image-form');
   const zone = form.locator('[data-image-dropzone]');
   const input = form.locator('#equipment-image-file');
   const preview = form.locator('[data-image-preview]');
   await expect(zone).toBeVisible();
+  await expect(form.locator('[data-image-limit]')).toContainText('ขนาดไฟล์ไม่เกิน 4 MB');
+  await expect(form.locator('[data-image-limit]')).toContainText('ขนาดภาพแนะนำไม่เกิน 1024 × 1024 px');
   await expect(zone).toContainText('Browse File');
   await expect(input).toHaveAttribute('accept', /image\/gif/);
   const gif = Buffer.from('R0lGODlhAQABAAD/ACwAAAAAAQABAAACAUwAOw==', 'base64');

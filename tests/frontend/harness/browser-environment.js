@@ -218,13 +218,13 @@
       app: {
         name: 'CRS Yuem-Kuen System',
         shortName: 'CRS Yuem-Kuen',
-        version: '0.1.10',
+        version: '0.1.11',
         timezone: 'Asia/Bangkok',
         locale: 'th-TH',
         webAppUrl: controls.get('qr') === 'unset'
           ? ''
           : 'https://script.google.com/macros/s/crs-test/exec',
-        maxImageBytes: 5 * 1024 * 1024,
+        maxImageBytes: 4 * 1024 * 1024,
         defaultPageSize: 12
       },
       session: session(),

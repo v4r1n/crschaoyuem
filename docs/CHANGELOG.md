@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 0.1.11 (2026-10-02)
+
+- The image upload dialog now shows the recommended 1024 × 1024 px dimensions beside the configured file size limit. Pixel dimensions remain guidance; the enforced limits are file type and bytes.
+
 ### 0.1.10 (2026-10-01)
 
 - Deployed as Apps Script v20 to the existing Pilot app and OAuth callback bridge from source commit 831b664; deployment IDs and URLs stayed the same.

@@ -1,8 +1,11 @@
 # CRS Yuem-Kuen System Project Memory
 
-Last updated: 2026-10-01
+Last updated: 2026-10-02
 
 ## Current state
+
+- Pilot 0.1.11 clarifies image guidance in the upload dialog: recommended dimensions at most 1024 × 1024 px alongside the configured byte limit. This is guidance, not a newly enforced pixel cap.
+- The 2026-10-02 workbook contains a malformed legacy Users row 3: the email occupies user_id and subsequent values are shifted. A valid administrator record exists in row 2. Preserve the legacy row until its references and migration blockers are reviewed; do not remove a Users row directly.
 
 - The supplied workbook has one STARTED image upload for AST-000003, with a pinned Drive file but no Equipment image reference. This blocks both new uploads and edits. Admin forms now offer guarded cancellation and retain unsaved input for retry.
 - Pilot 0.1.10 adds an audited ADMIN-only terminal DELETED status with exact asset-ID confirmation. Active loans and pending operations block deletion; the record, included items, image and History remain.

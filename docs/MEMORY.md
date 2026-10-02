@@ -5,6 +5,7 @@ Last updated: 2026-10-02
 ## Current state
 
 - Pilot 0.1.12 adds a session-gated image fallback for Drive thumbnail failures without changing Drive sharing. The 2026-10-02 workbook confirms AST-000004 has an Equipment image_file_id matching a completed upload and an existing Drive file; the browser image path, not the upload commit, is the likely failure. Authenticated live verification remains required.
+- Pilot 0.1.12 / Apps Script v22 was deployed to both existing Pilot deployments from source 9fc84cc. The app endpoint returned HTTP 200 with the new image RPC. Automated tests passed: 17 contract, 83 backend, 51 frontend. Browser verification using the user's Google account is still needed.
 - Pilot 0.1.11 clarifies image guidance in the upload dialog: recommended dimensions at most 1024 × 1024 px alongside the configured byte limit. This is guidance, not a newly enforced pixel cap.
 - Pilot 0.1.11 / Apps Script v21 is deployed to both existing Pilot deployments from source 0d0e127; the app endpoint returned HTTP 200 and included the image guidance.
 - The 2026-10-02 workbook contains a malformed legacy Users row 3: the email occupies user_id and subsequent values are shifted. A valid administrator record exists in row 2. Preserve the legacy row until its references and migration blockers are reviewed; do not remove a Users row directly.

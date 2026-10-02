@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### 0.1.12 (2026-10-02)
 
+- Deployed as Apps Script v22 to the existing Pilot app and OAuth callback bridge from source commit 9fc84cc; the app endpoint returned HTTP 200 and contained the authenticated image fallback RPC.
 - Equipment images now fall back to a session-gated Apps Script read when the browser cannot load a Drive thumbnail. The server reads only the image file referenced by Equipment, validates its type and content, and returns a placeholder when the image is unavailable. Drive sharing settings are unchanged.
 - The Pilot display name is shortened to CRS Yuem-Kuen.
 
